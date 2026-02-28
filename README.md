@@ -61,6 +61,8 @@
   9 份精标样本原图与 `LabelMe JSON`。
 - [`samples/showcase_set/`](samples/showcase_set/)
   用于展示各方法结果的 10 张统一样例原图。
+- [`dataset/full_png/`](dataset/full_png/)
+  完整 100 张实验输入 `PNG` 原图，可直接作为统一输入数据集查看和复用。
 - [`results/`](results/)
   9 个可展示方法的统一 10 样例预测结果，每张图包含 `mask` 和 `overlay`。
 - [`scripts/`](scripts/)
@@ -92,6 +94,8 @@
 │   ├── zero_shot/
 │   ├── postprocess/
 │   └── model_selection/
+├── dataset/
+│   └── full_png/
 ├── samples/
 │   ├── annotated_eval_set/
 │   └── showcase_set/
@@ -115,6 +119,6 @@
 - 模型权重文件，如 `*.pth`
 - 全量预测结果和中间缓存
 - Kaggle 训练中间产物
-- 全量原始数据压缩包
+- 原始 `TIF` 数据与压缩包
 
 相关说明见 [`docs/manifests/未纳入大文件清单.md`](docs/manifests/未纳入大文件清单.md)。
