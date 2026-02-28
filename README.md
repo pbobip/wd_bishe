@@ -19,6 +19,21 @@
 
 ![技术路线流程图](docs/charts/技术路线流程图.png)
 
+## 一眼看懂结果
+
+- `SAM LoRA V2`：边界最干净，最适合高精度形貌分析。
+- `ResNeXt50`：`Dice` 高且 `VF` 更接近统计需求，最适合体积分数统计。
+- `SMP`、`SAM V1`：`VF` 明显偏高，属于过分割风险模型。
+- `MatSAM`：零样本可直接出结果，但明显弱于微调后的监督学习模型。
+
+![各方法指标定位图](docs/charts/model_positioning.png)
+
+## 代表性样例对比
+
+下图统一展示 3 张代表性样例，从左到右依次为：原图、标注真值、`SAM LoRA V2`、`ResNeXt50`、`SMP`、`MatSAM`。
+
+![代表性样例分割对比](docs/charts/sample_showcase.png)
+
 ## 方法效果概览
 
 | 方法 | 仓库目录 | Dice | VF | 定位 |
