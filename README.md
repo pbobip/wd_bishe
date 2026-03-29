@@ -71,7 +71,7 @@
 - `MatSAM` 粗标注与人工精修，形成 `9` 张主监督样本
 - `E1a-E5` 的核心实验主线
 - `full_png` 的底部信息栏清理、批量预测和异常排查
-- 公开数据检索、NASA 数据接入与外部验证
+- 相关资料调研与实验材料整理
 
 还需要继续收口：
 
@@ -125,7 +125,7 @@
 - [`samples/annotated_eval_set/`](samples/annotated_eval_set/)
   - 当前最核心的 `9` 张精修图和对应标注
 - [`docs/mbu_netpp_research/`](docs/mbu_netpp_research/)
-  - 当前主方案的设计、实验、外部验证和 `E4/E5` 结果
+  - 当前主方案的设计、实验和 `E4/E5` 结果
 - [`results/`](results/)
   - 前期对比方法和自动预标注路线的展示材料
 - [`experiments/mbu_netpp/`](experiments/mbu_netpp/)
