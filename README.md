@@ -1,170 +1,138 @@
 # 镍基单晶 SEM 图像分割统计项目
 
-本仓库对应毕业设计《面向扫描电镜图像的镍基单晶微观结构分割统计系统开发》的整理提交版，目标是把当前阶段最重要的成果集中到一个可读、可展示、可复用的 GitHub 仓库中。
+本仓库对应毕业设计《面向扫描电镜图像的镍基单晶微观结构分割统计系统开发》的 GitHub 整理版。  
+截至 `2026-03-29`，仓库中的**当前主方案**已经切换为 `MBU-Net++` 路线，前期的 `SAM LoRA`、`ResNeXt50`、`MatSAM + SAM2` 等结果保留为**尝试记录、对照路线或预标注路线**，不再作为当前论文主线。
 
-最近一次更新：`2026-03-24`
+## 当前主线
 
-仓库包含：
-- 完整 `100` 张实验输入 `PNG` 数据
-- 监督学习主结果与当前自动预标注结果
-- 精标样本、总结报告、图表与关键脚本
+当前论文主线基于开题报告里已经明确提出的四类问题展开：
 
-## 核心结论
+- `SEM` 图像灰度差异小，γ/γ′ 相对比弱
+- 颗粒边界复杂，单纯区域分割容易粘连或漏分
+- 高质量标注获取成本高，监督样本少
+- 课题目标不只是分割，还要做面积分数和尺寸统计，要求结果稳定可用
 
-- 最佳高精度模型：`SAM LoRA V2`，`Dice = 0.9499`
-- 最适合体积分数统计的模型：`ResNeXt50`，`Dice = 0.9398`，`VF = 60.44%`
-- 零样本对照方法：`MatSAM`
-- 当前自动预标注推荐结果：`MatSAM + SAM2 + localfix_strict_otsu`
+针对这些问题，当前主方案定为：
 
-## 近期更新（2026-03-24）
+- `MicroNet-pretrained SE-ResNeXt50 + U-Net++ + Edge Head + Deep Supervision`
+- 在统计约束版本中进一步加入 `VF Loss`
 
-本轮新增了一条更贴近实际精修需求的自动预标注路线：
+当前主监督数据来源为：
 
+- 前期以 `MatSAM` 自动粗标注为底稿
+- 人工逐张精修后形成的 `9` 张高质量标注图
+
+这 `9` 张精修图是当前阶段最核心、最可信的监督数据来源，也是当前 `E1a-E5` 全部实验的基础。
+
+## 当前结论
+
+### 当前最值得保留的模型
+
+- 分割与边界最优：`E2 = MicroNet-U-Net++ + Edge Head + Deep Supervision`
+  - `Dice = 0.9321`
+  - `Boundary F1 = 0.7276`
+  - `VF = 0.0371`
+- 统计更均衡的版本：`E3 = E2 + VF Loss`
+  - `Dice = 0.9309`
+  - `Boundary F1 = 0.7211`
+  - `VF = 0.0332`
+
+### E4 与 E5 的真实结论
+
+- `E4` 半监督伪标签：有小幅正收益，但主要体现在分割和边界，`VF` 误差反而变差，暂时不能直接升格为最终方案。
+- `E5` 后处理：`remove_small` 只有极小收益；激进的形态学平滑会明显打坏结果，应该否掉。
+
+### 当前阶段判断
+
+- 当前主方案已经从“前期多路线尝试”转入“围绕开题报告问题做针对性改进”的阶段。
+- 目前更值得继续做的是：
+  - 基于修正裁切后的 `full_png` 挑难例精标
+  - 在当前主方案上做更干净的增量训练
+  - 最后收口到系统演示和论文图表
+
+## 毕设进度
+
+当前整体进度大致可判断为 `85%` 左右。
+
+已经完成：
+
+- 开题报告、任务书和题目目标梳理
+- 原始数据整理、`TIF/PNG` 处理与标注规范
+- `MatSAM` 粗标注与人工精修，形成 `9` 张主监督样本
+- `E1a-E5` 的核心实验主线
+- `full_png` 的底部信息栏清理、批量预测和异常排查
+- 公开数据检索、NASA 数据接入与外部验证
+
+还需要继续收口：
+
+- 难例精标后的增量训练
+- 最终系统整合与展示
+- 论文正文、图表和答辩材料收束
+
+## 前期尝试与其定位
+
+仓库中保留的以下路线，仍然有价值，但当前定位已经变化：
+
+- `SAM LoRA V2`
+  - 前期高精度尝试结果，保留为历史比较材料
+- `ResNeXt50`
+  - 前期统计型尝试结果，保留为历史比较材料
+- `MatSAM`
+  - 零样本对照方法
 - `MatSAM + SAM2 + localfix_strict_otsu`
+  - 自动预标注路线，用于生成粗底稿和扩充精修入口
 
-这条路线的定位不是替代前面已经完成的监督学习模型结论，而是解决“当前如何更高效地产生可精修底稿”的问题。
+这些内容现在的作用是：
 
-当前判断如下：
+- 说明前期已经做过较充分的模型和路线探索
+- 为当前主方案提供对照背景
+- 为后续扩标和难例精修继续服务
 
-- 它比早期零样本 `MatSAM` 更适合作为预标注起点；
-- 它比激进的 `hybrid_debond` 更稳，不容易把单块切碎；
-- 它仍然存在漏检，但在“宁可漏一点，也尽量减少明显粘连”这个目标下更实用；
-- 现阶段最合理的使用方式是：先用它出草稿，再人工精修，再训练专门监督模型。
+而不是继续作为当前论文主模型结论。
 
 ## 快速导航
 
 | 想看什么 | 入口 |
 | --- | --- |
-| 最新进展 | [`docs/LATEST_STATUS_2026-03-24.md`](docs/LATEST_STATUS_2026-03-24.md) |
-| 总结报告 | [`docs/当前工作总结报告.md`](docs/当前工作总结报告.md) |
-| 最终模型评价 | [`docs/FINAL_REPORT.md`](docs/FINAL_REPORT.md) |
+| 当前最新状态 | [`docs/LATEST_STATUS_2026-03-29.md`](docs/LATEST_STATUS_2026-03-29.md) |
+| 当前主方案研究区 | [`docs/mbu_netpp_research/README.md`](docs/mbu_netpp_research/README.md) |
+| `E4/E5` 最新结果 | [`docs/mbu_netpp_research/08_E4_E5结果.md`](docs/mbu_netpp_research/08_E4_E5结果.md) |
+| 当前总结报告 | [`docs/当前工作总结报告.md`](docs/当前工作总结报告.md) |
+| 前一轮自动预标注状态 | [`docs/LATEST_STATUS_2026-03-24.md`](docs/LATEST_STATUS_2026-03-24.md) |
 | 完整输入数据 | [`dataset/full_png/`](dataset/full_png/) |
+| 修正裁切后的 `full_png` 数据集 | [`dataset/full_png_cropped_xlsx/`](dataset/full_png_cropped_xlsx/) |
 | 精标样本 | [`samples/annotated_eval_set/`](samples/annotated_eval_set/) |
-| 展示样例 | [`samples/showcase_set/`](samples/showcase_set/) |
-| 方法结果对比 | [`results/README.md`](results/README.md) |
-| 当前自动预标注结果 | [`results/matsam_sam2_localfix_strict_otsu/`](results/matsam_sam2_localfix_strict_otsu/) |
-| 关键脚本 | [`scripts/`](scripts/) |
-| 未纳入内容说明 | [`docs/manifests/未纳入大文件清单.md`](docs/manifests/未纳入大文件清单.md) |
+| 前期方法结果 | [`results/README.md`](results/README.md) |
+| 当前实验代码 | [`experiments/mbu_netpp/`](experiments/mbu_netpp/) |
 
-## 一眼看懂结果
-
-- `SAM LoRA V2`：边界最干净，最适合高精度形貌分析。
-- `ResNeXt50`：`Dice` 高且 `VF` 更接近统计需求，最适合体积分数统计。
-- `MicroNet`、`ConvNeXt`、`Swin Transformer`：可用，但不是当前最优解。
-- `SMP`、`SAM V1`：`VF` 偏高，存在明显过分割风险。
-- `MatSAM`：零样本可直接出结果，但明显弱于微调后的监督学习模型。
-- `MatSAM + SAM2 + localfix_strict_otsu`：当前最适合作为人工精修前的自动预标注底稿。
-
-![各方法指标定位图](docs/charts/model_positioning.png)
-
-## 代表性样例对比
-
-下图统一展示 3 张代表性样例，从左到右依次为：原图、标注真值、`SAM LoRA V2`、`ResNeXt50`、`SMP`、`MatSAM`。
-
-![代表性样例分割对比](docs/charts/sample_showcase.png)
-
-## 方法效果概览
-
-| 方法 | 仓库目录 | Dice | VF | 定位 |
-| --- | --- | ---: | ---: | --- |
-| SAM LoRA V2 | `results/sam_lora/` | 0.9499 | 38.36% | 最佳高精度模型 |
-| ResNeXt50 | `results/resnext/` | 0.9398 | 60.44% | 最适合体积分数统计 |
-| MicroNet | `results/micronet/` | 0.9233 | 57.58% | 轻量且均衡 |
-| ConvNeXt 512 | `results/convnext/` | 0.9070 | 52.32% | 中上水平 |
-| Swin Transformer | `results/swint/` | 0.9004 | 58.41% | Transformer 对照 |
-| SMP | `results/smp/` | 0.8707 | 74.84% | 过分割 |
-| SAM (冻结) | `results/sam_frozen/` | 0.8100 | 52.28% | 冻结编码器对照 |
-| UNet | `results/unet/` | 0.7892 | 61.77% | 经典基准模型 |
-| MatSAM | `results/matsam/` | - | 30.38% | 零样本基线 |
-| MatSAM + SAM2 + localfix_strict_otsu | `results/matsam_sam2_localfix_strict_otsu/` | - | 58.53%* | 当前自动预标注推荐结果 |
-| SAM V1 | `results/sam_v1_metrics_only/` | 0.6534 | 86.02% | 失败对照，仅保留指标 |
-
-![各方法效果对比](docs/charts/方法效果对比.png)
-
-\* `58.53%` 为当前 100 张图自动预标注结果的 `vf_mean`，不与前述监督学习模型的 `Dice` 直接横向等价比较。详见 [`docs/LATEST_STATUS_2026-03-24.md`](docs/LATEST_STATUS_2026-03-24.md)。
-
-## 技术路线
-
-1. 原始 SEM 图像整理与 `TIF -> PNG` 预处理
-2. 制定 γ′ 相标注规范，完成小样本精标
-3. 建立监督学习基线与迁移学习流程
-4. 引入 `SAM LoRA`、`ResNeXt`、`MicroNet`、`Swin Transformer` 等多模型对比
-5. 引入 `MatSAM` 作为零样本对照路线
-6. 在零样本路线基础上继续引入 `SAM2 + localfix`，探索更适合人工精修的自动预标注方案
-7. 输出分割结果，并进行 `Dice` 和 `VF` 评价
-
-![技术路线流程图](docs/charts/技术路线流程图.png)
-
-## 仓库内容
+## 仓库内容说明
 
 - [`dataset/full_png/`](dataset/full_png/)
-  完整 `100` 张实验输入 `PNG` 原图。
+  - `100` 张原始 `PNG` 输入图
+- [`dataset/full_png_cropped_xlsx/`](dataset/full_png_cropped_xlsx/)
+  - 基于 `xlsx` 类型信息完成底部信息栏清理后的版本
 - [`samples/annotated_eval_set/`](samples/annotated_eval_set/)
-  `9` 份精标样本原图与 `LabelMe JSON`。
-- [`samples/showcase_set/`](samples/showcase_set/)
-  用于横向展示的 `10` 张统一样例。
+  - 当前最核心的 `9` 张精修图和对应标注
+- [`docs/mbu_netpp_research/`](docs/mbu_netpp_research/)
+  - 当前主方案的设计、实验、外部验证和 `E4/E5` 结果
 - [`results/`](results/)
-  监督学习方法结果与零样本基线的统一展示结果。
-- [`results/matsam_sam2_localfix_strict_otsu/`](results/matsam_sam2_localfix_strict_otsu/)
-  当前自动预标注推荐结果的代表性 `preview`。
-- [`docs/`](docs/)
-  总结报告、最终报告、图表与内容清单。
-- [`scripts/`](scripts/)
-  数据预处理、预测、后处理与统计脚本。
+  - 前期对比方法和自动预标注路线的展示材料
+- [`experiments/mbu_netpp/`](experiments/mbu_netpp/)
+  - 当前主方案训练、评估、推理与数据处理代码
 
-## 使用说明
+## 推荐阅读顺序
 
-### 克隆仓库
+1. [`docs/LATEST_STATUS_2026-03-29.md`](docs/LATEST_STATUS_2026-03-29.md)
+2. [`docs/mbu_netpp_research/README.md`](docs/mbu_netpp_research/README.md)
+3. [`docs/mbu_netpp_research/06_阶段性结果汇总.md`](docs/mbu_netpp_research/06_阶段性结果汇总.md)
+4. [`docs/mbu_netpp_research/08_E4_E5结果.md`](docs/mbu_netpp_research/08_E4_E5结果.md)
+5. [`docs/当前工作总结报告.md`](docs/当前工作总结报告.md)
 
-本仓库使用 `Git LFS` 管理图片。首次克隆前请确保本机已安装 `git lfs`。
+## 说明
 
-```bash
-git lfs install
-git clone git@github.com:pbobip/wd_bishe.git
-cd wd_bishe
-git lfs pull
-```
+这个仓库现在同时承担两件事：
 
-### 推荐阅读顺序
+- 记录当前毕业设计主线的真实进展
+- 保存前期探索、尝试和自动预标注路线的阶段性产物
 
-1. [`docs/当前工作总结报告.md`](docs/当前工作总结报告.md)
-2. [`docs/LATEST_STATUS_2026-03-24.md`](docs/LATEST_STATUS_2026-03-24.md)
-3. [`docs/FINAL_REPORT.md`](docs/FINAL_REPORT.md)
-4. [`results/README.md`](results/README.md)
-5. [`samples/showcase_set/README.md`](samples/showcase_set/README.md)
-6. [`docs/manifests/未纳入大文件清单.md`](docs/manifests/未纳入大文件清单.md)
-
-## 目录结构
-
-```text
-wd_bishe/
-├── README.md
-├── .gitattributes
-├── .gitignore
-├── dataset/
-│   ├── README.md
-│   └── full_png/
-├── docs/
-│   ├── 当前工作总结报告.md
-│   ├── LATEST_STATUS_2026-03-24.md
-│   ├── FINAL_REPORT.md
-│   ├── comparison_report_v2_v3.md
-│   ├── charts/
-│   └── manifests/
-├── results/
-│   ├── matsam_sam2_localfix_strict_otsu/
-├── samples/
-└── scripts/
-```
-
-## 仓库边界
-
-这个仓库是面向 GitHub 展示和答辩说明的整理包，不是原始实验工作区的完整镜像。以下内容没有直接纳入：
-
-- 模型权重文件，如 `*.pth`
-- 全量预测结果和中间缓存
-- Kaggle 训练中间产物
-- 原始 `TIF` 数据与压缩包
-- 当前 `SAM2` 路线的完整 100 图输出目录，仅保留代表性预览图
-
-详细说明见 [`docs/manifests/未纳入大文件清单.md`](docs/manifests/未纳入大文件清单.md)。
+因此，阅读时请优先以 `2026-03-29` 之后的 `MBU-Net++` 路线为主，不要再把更早的 `SAM LoRA / ResNeXt / MatSAM + SAM2` 结果理解为当前论文主方案。
