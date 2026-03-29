@@ -24,6 +24,10 @@
 
 这 `9` 张精修图是当前阶段最核心、最可信的监督数据来源，也是当前 `E1a-E5` 全部实验的基础。
 
+如果要看这条链是怎么形成的，可以直接看：
+
+- [`docs/MatSAM_粗标注思路.md`](docs/MatSAM_粗标注思路.md)
+
 ## 当前结论
 
 ### 当前最值得保留的模型
@@ -95,6 +99,7 @@
 | 想看什么 | 入口 |
 | --- | --- |
 | 当前最新状态 | [`docs/LATEST_STATUS_2026-03-29.md`](docs/LATEST_STATUS_2026-03-29.md) |
+| `MatSAM` 思路与数据来源 | [`docs/MatSAM_粗标注思路.md`](docs/MatSAM_粗标注思路.md) |
 | 当前主方案研究区 | [`docs/mbu_netpp_research/README.md`](docs/mbu_netpp_research/README.md) |
 | `E4/E5` 最新结果 | [`docs/mbu_netpp_research/08_E4_E5结果.md`](docs/mbu_netpp_research/08_E4_E5结果.md) |
 | 当前总结报告 | [`docs/当前工作总结报告.md`](docs/当前工作总结报告.md) |
