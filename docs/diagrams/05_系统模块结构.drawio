@@ -1,0 +1,254 @@
+<mxfile host="app.diagrams.net" modified="2026-03-29" type="device">
+  <diagram name="系统模块结构" id="system-arch">
+    <mxGraphModel dx="1422" dy="820" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1200" math="0" shadow="1">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- 标题 -->
+        <mxCell id="t1" value="镍基单晶 SEM 分割统计系统 — 模块结构" style="text;html=1;fontSize=22;fontFamily=Microsoft YaHei;align=center;fontStyle=1;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="280" y="15" width="650" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== Layer 1: 前端交互层 ===== -->
+        <mxCell id="fe" value="&lt;b&gt;前端交互层&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#e3f2fd;strokeColor=#1565c0;rounded=1;arcSize=6;fontFamily=Microsoft YaHei;fontSize=14;shadow=1;swimlaneLine=0;fontColor=#1565c0;" vertex="1" parent="1">
+          <mxGeometry x="60" y="70" width="1120" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="f1" value="项目管理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="15" y="42" width="100" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="f2" value="图像上传&lt;br&gt;(单张/批量)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="130" y="42" width="110" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="f3" value="标定检测" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="255" y="42" width="95" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="f4" value="预处理预览" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="365" y="42" width="100" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="f5" value="任务执行&lt;br&gt;+ 进度跟踪" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="480" y="42" width="110" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="f6" value="分割结果浏览" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="605" y="42" width="110" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="f7" value="统计图表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="730" y="42" width="95" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="f8" value="结果导出" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="840" y="42" width="95" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="f9" value="模型管理" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bbdefb;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="fe">
+          <mxGeometry x="950" y="42" width="95" height="42" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== 前端 → API 连接 ===== -->
+        <mxCell id="ea1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=3;strokeColor=#333;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="fe" target="api" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ea1_label" value="HTTP / REST API" style="edgeLabel;html=1;fontSize=11;fontFamily=Microsoft YaHei;fillColor=#e8eaf6;strokeColor=#5c6bc0;rounded=1;" connectable="0" vertex="1" parent="ea1">
+          <mxGeometry relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- ===== Layer 2: API 路由层 ===== -->
+        <mxCell id="api" value="&lt;b&gt;API 路由层 — FastAPI&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#e8eaf6;strokeColor=#5c6bc0;rounded=1;arcSize=6;fontFamily=Microsoft YaHei;fontSize=14;shadow=1;swimlaneLine=0;fontColor=#283593;" vertex="1" parent="1">
+          <mxGeometry x="60" y="210" width="1120" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="a1" value="/projects&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#666&quot;&gt;项目 CRUD&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c5cae9;strokeColor=#5c6bc0;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="api">
+          <mxGeometry x="15" y="42" width="100" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="a2" value="/runs&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#666&quot;&gt;任务管理&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c5cae9;strokeColor=#5c6bc0;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="api">
+          <mxGeometry x="130" y="42" width="100" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="a3" value="/runs/{id}/images&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#666&quot;&gt;图像上传&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c5cae9;strokeColor=#5c6bc0;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="api">
+          <mxGeometry x="245" y="42" width="120" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="a4" value="/runs/{id}/execute&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#666&quot;&gt;执行任务&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c5cae9;strokeColor=#5c6bc0;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="api">
+          <mxGeometry x="380" y="42" width="120" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="a5" value="/runs/{id}/results&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#666&quot;&gt;获取结果&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c5cae9;strokeColor=#5c6bc0;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="api">
+          <mxGeometry x="515" y="42" width="120" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="a6" value="/calibration&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#666&quot;&gt;标定检测&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c5cae9;strokeColor=#5c6bc0;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="api">
+          <mxGeometry x="650" y="42" width="105" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="a7" value="/preprocess&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#666&quot;&gt;预处理预览&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c5cae9;strokeColor=#5c6bc0;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="api">
+          <mxGeometry x="770" y="42" width="105" height="42" as="geometry"/>
+        </mxCell>
+        <mxCell id="a8" value="/model-runners&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#666&quot;&gt;模型管理&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c5cae9;strokeColor=#5c6bc0;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="api">
+          <mxGeometry x="890" y="42" width="115" height="42" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== API → Pipeline 连接 ===== -->
+        <mxCell id="ea2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=3;strokeColor=#333;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="api" target="pipeline" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ea2_label" value="task_manager 调度" style="edgeLabel;html=1;fontSize=11;fontFamily=Microsoft YaHei;fillColor=#e8eaf6;strokeColor=#5c6bc0;rounded=1;" connectable="0" vertex="1" parent="ea2">
+          <mxGeometry relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- ===== Layer 3: 主执行流水线 ===== -->
+        <mxCell id="pipeline" value="&lt;b&gt;主执行流水线 — pipeline.py&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#e8f5e9;strokeColor=#43a047;rounded=1;arcSize=6;fontFamily=Microsoft YaHei;fontSize=14;shadow=1;swimlaneLine=0;fontColor=#2e7d32;" vertex="1" parent="1">
+          <mxGeometry x="60" y="350" width="1120" height="120" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="p1" value="&lt;b&gt;Step 1&lt;/b&gt;&lt;br&gt;Input&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#444&quot;&gt;SEM ROI 检测&lt;br&gt;底栏裁切&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#43a047;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="pipeline">
+          <mxGeometry x="15" y="42" width="130" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="p2" value="&lt;b&gt;Step 2&lt;/b&gt;&lt;br&gt;Preprocess&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#444&quot;&gt;CLAHE / 去噪&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#43a047;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="pipeline">
+          <mxGeometry x="170" y="42" width="130" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="p3" value="&lt;b&gt;Step 3&lt;/b&gt;&lt;br&gt;Traditional Seg&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#444&quot;&gt;Otsu / 自适应阈值&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#43a047;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="pipeline">
+          <mxGeometry x="325" y="42" width="140" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="p4" value="&lt;b&gt;Step 4&lt;/b&gt;&lt;br&gt;DL Seg&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#444&quot;&gt;MBU-Net++ 推理&lt;br&gt;滑窗 + GPU&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#a5d6a7;strokeColor=#2e7d32;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;strokeWidth=2;" vertex="1" parent="pipeline">
+          <mxGeometry x="490" y="42" width="140" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="p5" value="&lt;b&gt;Step 5&lt;/b&gt;&lt;br&gt;Stats&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#444&quot;&gt;统计摘要 + 图表&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#a5d6a7;strokeColor=#2e7d32;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;strokeWidth=2;" vertex="1" parent="pipeline">
+          <mxGeometry x="655" y="42" width="140" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="p6" value="&lt;b&gt;Step 6&lt;/b&gt;&lt;br&gt;Export&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#444&quot;&gt;PNG / CSV / XLSX&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#43a047;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="pipeline">
+          <mxGeometry x="820" y="42" width="130" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="p_mode" value="运行模式：&lt;br&gt;Traditional / DL / Compare" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="pipeline">
+          <mxGeometry x="970" y="42" width="135" height="65" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="ep1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#43a047;" edge="1" source="p1" target="p2" parent="pipeline"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ep2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#43a047;" edge="1" source="p2" target="p3" parent="pipeline"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ep3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#43a047;" edge="1" source="p3" target="p4" parent="pipeline"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ep4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#43a047;" edge="1" source="p4" target="p5" parent="pipeline"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="ep5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#43a047;" edge="1" source="p5" target="p6" parent="pipeline"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ===== Pipeline → Services 连接 ===== -->
+        <mxCell id="ea3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=3;strokeColor=#333;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="pipeline" target="services" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="ea3_label" value="调用核心服务" style="edgeLabel;html=1;fontSize=11;fontFamily=Microsoft YaHei;fillColor=#e8f5e9;strokeColor=#43a047;rounded=1;" connectable="0" vertex="1" parent="ea3">
+          <mxGeometry relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- ===== Layer 4: 核心服务模块 ===== -->
+        <mxCell id="services" value="&lt;b&gt;核心服务模块&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#fff3e0;strokeColor=#ef6c00;rounded=1;arcSize=6;fontFamily=Microsoft YaHei;fontSize=14;shadow=1;swimlaneLine=0;fontColor=#e65100;" vertex="1" parent="1">
+          <mxGeometry x="60" y="510" width="1120" height="310" as="geometry"/>
+        </mxCell>
+
+        <!-- 第一行：图像处理服务 -->
+        <mxCell id="sv_row1" value="&lt;b&gt;图像处理&lt;/b&gt;" style="text;html=1;fontSize=12;fontFamily=Microsoft YaHei;fontStyle=1;fillColor=none;strokeColor=none;fontColor=#e65100;" vertex="1" parent="services">
+          <mxGeometry x="15" y="38" width="100" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="sv1" value="&lt;b&gt;sem_roi.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#444&quot;&gt;SEM 图像 ROI 检测&lt;br&gt;底部信息栏分离&lt;br&gt;比例尺横线定位&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ef6c00;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="services">
+          <mxGeometry x="15" y="62" width="175" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="sv2" value="&lt;b&gt;sem_footer_ocr.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#444&quot;&gt;底栏 OCR 识别&lt;br&gt;比例尺 μm / 放大倍率&lt;br&gt;WD / 检测器 / 扫描模式&lt;br&gt;自动算 um_per_px&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ef6c00;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="services">
+          <mxGeometry x="210" y="62" width="175" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="sv3" value="&lt;b&gt;preprocess.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#444&quot;&gt;图像预处理&lt;br&gt;CLAHE / 去噪&lt;br&gt;可配置管线&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ef6c00;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="services">
+          <mxGeometry x="405" y="62" width="155" height="75" as="geometry"/>
+        </mxCell>
+
+        <!-- 第二行：分割服务 -->
+        <mxCell id="sv_row2" value="&lt;b&gt;分割引擎&lt;/b&gt;" style="text;html=1;fontSize=12;fontFamily=Microsoft YaHei;fontStyle=1;fillColor=none;strokeColor=none;fontColor=#e65100;" vertex="1" parent="services">
+          <mxGeometry x="15" y="148" width="100" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="sv4" value="&lt;b&gt;traditional.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#444&quot;&gt;传统分割算法&lt;br&gt;Otsu / 自适应阈值&lt;br&gt;Mask + Overlay + Edges&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ef6c00;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="services">
+          <mxGeometry x="15" y="172" width="175" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="sv5" value="&lt;b&gt;model_runner.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#444&quot;&gt;DL 模型推理调度&lt;br&gt;加载 MBU-Net++ 权重&lt;br&gt;滑窗推理 + GPU/CPU&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#e65100;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;strokeWidth=2;" vertex="1" parent="services">
+          <mxGeometry x="210" y="172" width="175" height="75" as="geometry"/>
+        </mxCell>
+
+        <!-- 第三列：统计与导出 -->
+        <mxCell id="sv_row3" value="&lt;b&gt;统计与导出&lt;/b&gt;" style="text;html=1;fontSize=12;fontFamily=Microsoft YaHei;fontStyle=1;fillColor=none;strokeColor=none;fontColor=#e65100;" vertex="1" parent="services">
+          <mxGeometry x="580" y="38" width="120" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="sv6" value="&lt;b&gt;statistics.py ⭐&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#444&quot;&gt;微观结构统计分析（核心）&lt;br&gt;• VF (体积分数)&lt;br&gt;• 面积 / 等效直径 / 周长&lt;br&gt;• 长轴 / 短轴 / Feret 径&lt;br&gt;• 长宽比 / 圆度 / 球度 / 实心度&lt;br&gt;• 通道宽度 (Distance Transform + 骨架)&lt;br&gt;• Lantuéjoul 加权偏置修正&lt;br&gt;• 边界接触过滤 / 形态学筛选&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcc80;strokeColor=#e65100;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;strokeWidth=2;align=left;spacingLeft=8;" vertex="1" parent="services">
+          <mxGeometry x="580" y="62" width="270" height="185" as="geometry"/>
+        </mxCell>
+        <mxCell id="sv7" value="&lt;b&gt;exporter.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#444&quot;&gt;结果导出服务&lt;br&gt;PNG 可视化&lt;br&gt;CSV / XLSX 报表&lt;br&gt;打包下载&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ef6c00;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="services">
+          <mxGeometry x="870" y="62" width="155" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="sv8" value="&lt;b&gt;storage.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#444&quot;&gt;文件存储管理&lt;br&gt;路径映射 / 静态服务&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#ef6c00;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="services">
+          <mxGeometry x="870" y="162" width="155" height="65" as="geometry"/>
+        </mxCell>
+
+        <!-- 服务内部连接 -->
+        <mxCell id="esv1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=1.5;strokeColor=#ef6c00;dashed=1;dashPattern=6 3;" edge="1" source="sv1" target="sv2" parent="services"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ===== Layer 5: 数据持久层 ===== -->
+        <mxCell id="db" value="&lt;b&gt;数据持久层&lt;/b&gt;" style="swimlane;startSize=30;fillColor=#fce4ec;strokeColor=#c62828;rounded=1;arcSize=6;fontFamily=Microsoft YaHei;fontSize=14;shadow=1;swimlaneLine=0;fontColor=#c62828;" vertex="1" parent="1">
+          <mxGeometry x="60" y="870" width="760" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="db1" value="&lt;b&gt;SQLAlchemy ORM&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#444&quot;&gt;SQLite 数据库&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#ef9a9a;strokeColor=#c62828;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="db">
+          <mxGeometry x="15" y="38" width="130" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="db2" value="&lt;b&gt;Project&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;项目实体&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="db">
+          <mxGeometry x="170" y="45" width="90" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="db3" value="&lt;b&gt;RunTask&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;分析任务&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="db">
+          <mxGeometry x="275" y="45" width="90" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="db4" value="&lt;b&gt;ImageAsset&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;图像资产&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="db">
+          <mxGeometry x="380" y="45" width="90" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="db5" value="&lt;b&gt;MetricRecord&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;指标记录&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="db">
+          <mxGeometry x="485" y="45" width="100" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="db6" value="&lt;b&gt;ExportRecord&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;导出记录&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="db">
+          <mxGeometry x="600" y="45" width="100" height="45" as="geometry"/>
+        </mxCell>
+
+        <!-- Services → DB -->
+        <mxCell id="ea4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=3;strokeColor=#333;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="services" target="db" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== 右侧：实验训练模块 ===== -->
+        <mxCell id="ml" value="&lt;b&gt;实验训练模块（离线）&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#666&quot;&gt;experiments/mbu_netpp/&lt;/font&gt;" style="swimlane;startSize=40;fillColor=#f3e5f5;strokeColor=#7b1fa2;rounded=1;arcSize=6;fontFamily=Microsoft YaHei;fontSize=13;shadow=1;swimlaneLine=0;fontColor=#4a148c;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1030" width="1120" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="ml1" value="&lt;b&gt;models.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;MBU-Net++ 定义&lt;br&gt;SE-ResNeXt50&lt;br&gt;U-Net++ + Heads&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#7b1fa2;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="ml">
+          <mxGeometry x="15" y="50" width="130" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="ml2" value="&lt;b&gt;train.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;训练流程&lt;br&gt;3-fold 交叉验证&lt;br&gt;AdamW + Cosine&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#7b1fa2;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="ml">
+          <mxGeometry x="160" y="50" width="130" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="ml3" value="&lt;b&gt;dataset.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;数据加载 + 增强&lt;br&gt;Patch 采样&lt;br&gt;边界标签生成&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#7b1fa2;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="ml">
+          <mxGeometry x="305" y="50" width="130" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="ml4" value="&lt;b&gt;losses.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;复合损失函数&lt;br&gt;Dice+BCE+Edge&lt;br&gt;+Deep+VF&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#7b1fa2;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="ml">
+          <mxGeometry x="450" y="50" width="120" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="ml5" value="&lt;b&gt;metrics.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;评估指标&lt;br&gt;Dice / IoU / VF&lt;br&gt;Boundary F1&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#7b1fa2;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="ml">
+          <mxGeometry x="585" y="50" width="120" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="ml6" value="&lt;b&gt;infer.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;滑窗推理&lt;br&gt;整图预测&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#7b1fa2;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="ml">
+          <mxGeometry x="720" y="50" width="110" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="ml7" value="&lt;b&gt;preparation.py&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;JSON→Mask&lt;br&gt;3-fold 划分&lt;br&gt;数据检查&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1bee7;strokeColor=#7b1fa2;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;" vertex="1" parent="ml">
+          <mxGeometry x="845" y="50" width="120" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="ml_out" value="&lt;b&gt;产出模型权重&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;.pth checkpoint&lt;/font&gt;" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#ce93d8;strokeColor=#7b1fa2;fontFamily=Microsoft YaHei;fontSize=10;shadow=1;rounded=1;" vertex="1" parent="ml">
+          <mxGeometry x="980" y="55" width="125" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- 训练模块 → 系统（虚线：产出权重） -->
+        <mxCell id="eml" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2.5;strokeColor=#7b1fa2;dashed=1;dashPattern=10 5;exitX=0.85;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;" edge="1" source="ml" target="services" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="eml_label" value="训练产出权重 → 加载推理" style="edgeLabel;html=1;fontSize=11;fontFamily=Microsoft YaHei;fillColor=#f3e5f5;strokeColor=#7b1fa2;rounded=1;" connectable="0" vertex="1" parent="eml">
+          <mxGeometry relative="1" as="geometry"><mxPoint as="offset"/></mxGeometry>
+        </mxCell>
+
+        <!-- 文件存储 -->
+        <mxCell id="fs" value="&lt;b&gt;文件存储&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#444&quot;&gt;backend/storage/&lt;br&gt;input / processed / outputs / charts&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#ef9a9a;strokeColor=#c62828;fontFamily=Microsoft YaHei;fontSize=11;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="900" y="880" width="280" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="ea5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=2;strokeColor=#c62828;dashed=1;dashPattern=6 3;exitX=0.7;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="services" target="fs" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

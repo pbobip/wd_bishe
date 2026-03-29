@@ -1,0 +1,194 @@
+<mxfile host="app.diagrams.net" modified="2026-03-29" type="device">
+  <diagram name="实验消融链路" id="exp-chain">
+    <mxGraphModel dx="1422" dy="820" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1200" math="0" shadow="1">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- 标题 -->
+        <mxCell id="t1" value="MBU-Net++ 实验消融链路 (E1a → E5)" style="text;html=1;fontSize=22;fontFamily=Microsoft YaHei;align=center;fontStyle=1;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="250" y="15" width="700" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="t2" value="&lt;i&gt;原则：每步只变一个变量，确保收益可归因。3-fold 交叉验证，9 张精修图。&lt;/i&gt;" style="text;html=1;fontSize=12;fontFamily=Microsoft YaHei;align=center;fontColor=#666;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="300" y="50" width="600" height="25" as="geometry"/>
+        </mxCell>
+
+        <!-- 列标题 -->
+        <mxCell id="h1" value="&lt;b&gt;实验&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#333333;strokeColor=#333333;fontColor=#ffffff;fontFamily=Microsoft YaHei;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="80" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="h2" value="&lt;b&gt;对比内容&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#333333;strokeColor=#333333;fontColor=#ffffff;fontFamily=Microsoft YaHei;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="140" y="90" width="350" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="h3" value="&lt;b&gt;关键指标&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#333333;strokeColor=#333333;fontColor=#ffffff;fontFamily=Microsoft YaHei;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="510" y="90" width="310" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="h4" value="&lt;b&gt;结论&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#333333;strokeColor=#333333;fontColor=#ffffff;fontFamily=Microsoft YaHei;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="840" y="90" width="350" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="h5" value="&lt;b&gt;判定&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#333333;strokeColor=#333333;fontColor=#ffffff;fontFamily=Microsoft YaHei;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="90" width="100" height="40" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== E1a 行 ===== -->
+        <mxCell id="r1a_tag" value="&lt;b&gt;E1a&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=14;fontColor=#1565c0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="150" width="80" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1a_content" value="&lt;b&gt;小样本增强对照&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;U-Net++ 无增强 vs U-Net++ 标准增强&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;验证增强方向是否正确&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#90caf9;fontFamily=Microsoft YaHei;fontSize=12;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="140" y="150" width="350" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1a_metric" value="无增强 Dice=0.9281 VF=0.0339&lt;br&gt;有增强 Dice=0.9296 VF=0.0425" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#90caf9;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="150" width="310" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1a_conclusion" value="增强对 Dice / BF1 有轻微帮助&lt;br&gt;但 VF 变差（0.0339→0.0425）&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;增强策略偏向泛化而非统计一致性&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#90caf9;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="840" y="150" width="350" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1a_status" value="✅ 通过" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#43a047;fontFamily=Microsoft YaHei;fontSize=12;fontStyle=1;fontColor=#2e7d32;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="150" width="100" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- E1a → E1 箭头 -->
+        <mxCell id="arrow_1a_1" value="固定增强策略" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=3;strokeColor=#1565c0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="r1a_tag" target="r1_tag" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== E1 行 ===== -->
+        <mxCell id="r1_tag" value="&lt;b&gt;E1&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1565c0;fontFamily=Microsoft YaHei;fontSize=14;fontColor=#1565c0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="260" width="80" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1_content" value="&lt;b&gt;Baseline 三组对比&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;① U-Net&lt;br&gt;② U-Net++&lt;br&gt;③ MicroNet-pretrained U-Net++&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;分离结构收益与预训练收益&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#90caf9;fontFamily=Microsoft YaHei;fontSize=12;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="140" y="260" width="350" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1_metric" value="U-Net:　　　Dice=0.9272 BF1=0.7013&lt;br&gt;U-Net++:　　Dice=0.9290 BF1=0.7093&lt;br&gt;MicroNet++: Dice=&lt;b&gt;0.9305&lt;/b&gt; BF1=&lt;b&gt;0.7188&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;U-Net++ VF=0.0302（全表最低）&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#90caf9;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="260" width="310" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1_conclusion" value="U-Net++ &gt; U-Net（结构收益）&lt;br&gt;MicroNet-U-Net++ &gt; U-Net++（预训练收益）&lt;br&gt;&lt;b&gt;MicroNet 显微预训练有效&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;选择 MicroNet-U-Net++ 作为后续基座&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#90caf9;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="840" y="260" width="350" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1_status" value="✅ 通过" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#43a047;fontFamily=Microsoft YaHei;fontSize=12;fontStyle=1;fontColor=#2e7d32;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="260" width="100" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- E1 → E2 -->
+        <mxCell id="arrow_1_2" value="以最优 Baseline&lt;br&gt;为基础" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=3;strokeColor=#1565c0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="r1_tag" target="r2_tag" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== E2 行 ===== -->
+        <mxCell id="r2_tag" value="&lt;b&gt;E2&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;fontFamily=Microsoft YaHei;fontSize=14;fontColor=#e65100;" vertex="1" parent="1">
+          <mxGeometry x="40" y="395" width="80" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="r2_content" value="&lt;b&gt;边界分支消融&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;① MicroNet-U-Net++ + Edge Head&lt;br&gt;② + Edge Head + Deep Supervision&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;验证边界建模是否有效&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#ffe082;fontFamily=Microsoft YaHei;fontSize=12;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="140" y="395" width="350" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="r2_metric" value="+ Edge Head:&lt;br&gt;Dice=0.9283 BF1=0.7060 ❌ 无收益&lt;br&gt;+ Edge + Deep:&lt;br&gt;Dice=&lt;b&gt;0.9321&lt;/b&gt; BF1=&lt;b&gt;0.7276&lt;/b&gt; ⭐ 最优" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#ffe082;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="395" width="310" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="r2_conclusion" value="单独 Edge Head 无稳定收益&lt;br&gt;&lt;b&gt;Edge Head + Deep Supervision 配合后有效&lt;/b&gt;&lt;br&gt;Dice 和 BF1 均达当前最高&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;边界建模需与多尺度监督配合&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#ffe082;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="840" y="395" width="350" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="r2_status" value="⭐ 最优" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontFamily=Microsoft YaHei;fontSize=12;fontStyle=1;fontColor=#e65100;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="395" width="100" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- E2 → E3 -->
+        <mxCell id="arrow_2_3" value="以最优结构&lt;br&gt;为基础" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=3;strokeColor=#f9a825;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="r2_tag" target="r3_tag" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== E3 行 ===== -->
+        <mxCell id="r3_tag" value="&lt;b&gt;E3&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;fontFamily=Microsoft YaHei;fontSize=14;fontColor=#e65100;" vertex="1" parent="1">
+          <mxGeometry x="40" y="530" width="80" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r3_content" value="&lt;b&gt;VF Loss 统计约束消融&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;E2 (Edge+Deep) vs E2 + VF Loss&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;验证统计目标对齐是否有效&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#ffe082;fontFamily=Microsoft YaHei;fontSize=12;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="140" y="530" width="350" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r3_metric" value="E2: Dice=0.9321 VF=0.0371 BF1=0.7276&lt;br&gt;E3: Dice=0.9309 VF=&lt;b&gt;0.0332&lt;/b&gt; BF1=0.7211&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;VF↓ 0.0039（改善） Dice↓ 0.0012（代价小）&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#ffe082;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="530" width="310" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r3_conclusion" value="&lt;b&gt;VF Loss 有效&lt;/b&gt;&lt;br&gt;用少量分割性能换统计稳定性，代价不大&lt;br&gt;&lt;b&gt;⭐ 当前最均衡方案&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;推荐作为论文主模型候选&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#ffe082;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="840" y="530" width="350" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r3_status" value="⭐ 最均衡" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#f9a825;fontFamily=Microsoft YaHei;fontSize=12;fontStyle=1;fontColor=#e65100;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="530" width="100" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- E3 → E4 -->
+        <mxCell id="arrow_3_4" value="主线稳定后&lt;br&gt;才进入" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=3;strokeColor=#9e9e9e;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;dashPattern=8 4;" edge="1" source="r3_tag" target="r4_tag" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== E4 行 ===== -->
+        <mxCell id="r4_tag" value="&lt;b&gt;E4&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#7b1fa2;fontFamily=Microsoft YaHei;fontSize=14;fontColor=#7b1fa2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="660" width="80" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r4_content" value="&lt;b&gt;半监督伪标签验证&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;Teacher=E2，91张未标注图&lt;br&gt;0.5 阈值硬伪标签，微调 30 epochs&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;验证扩样是否有收益&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#ce93d8;fontFamily=Microsoft YaHei;fontSize=12;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="140" y="660" width="350" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r4_metric" value="Dice +0.0020 ↑&lt;br&gt;BF1 +0.0105 ↑&lt;br&gt;VF +0.0021 ↑ &lt;font color=&quot;#c62828&quot;&gt;（变差）&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#ce93d8;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="660" width="310" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r4_conclusion" value="分割/边界有小幅正收益&lt;br&gt;&lt;font color=&quot;#c62828&quot;&gt;但 VF 误差变差，统计无改善&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;暂不能升格为最终方案&lt;br&gt;后续应补充高置信筛选&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#ce93d8;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="840" y="660" width="350" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r4_status" value="⚠ 有限" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ef6c00;fontFamily=Microsoft YaHei;fontSize=12;fontStyle=1;fontColor=#e65100;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="660" width="100" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- E4 → E5 -->
+        <mxCell id="arrow_4_5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=3;strokeColor=#9e9e9e;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;dashPattern=8 4;" edge="1" source="r4_tag" target="r5_tag" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== E5 行 ===== -->
+        <mxCell id="r5_tag" value="&lt;b&gt;E5&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#7b1fa2;fontFamily=Microsoft YaHei;fontSize=14;fontColor=#7b1fa2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="790" width="80" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r5_content" value="&lt;b&gt;后处理影响评估&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;① raw（原始输出）&lt;br&gt;② remove_small（去小连通域）&lt;br&gt;③ morph_smooth（开闭运算+平滑）&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#ce93d8;fontFamily=Microsoft YaHei;fontSize=12;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="140" y="790" width="350" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r5_metric" value="remove_small: Dice +0.00003 ≈ 无变化&lt;br&gt;&lt;font color=&quot;#c62828&quot;&gt;morph_smooth: Dice=0.8996 VF=0.1117&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#c62828&quot;&gt;BF1=0.5054 —— 严重劣化&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#ce93d8;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="790" width="310" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r5_conclusion" value="remove_small 收益极小，可保留为微调&lt;br&gt;&lt;font color=&quot;#c62828&quot;&gt;&lt;b&gt;激进形态学平滑明确否定&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#666&quot;&gt;后处理不是主要增益来源&lt;br&gt;不应继续堆后处理规则&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#ce93d8;fontFamily=Microsoft YaHei;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="840" y="790" width="350" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r5_status" value="❌ 否定" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#c62828;fontFamily=Microsoft YaHei;fontSize=12;fontStyle=1;fontColor=#c62828;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="790" width="100" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- ===== 最终结论区 ===== -->
+        <mxCell id="final_box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#43a047;shadow=1;strokeWidth=2.5;" vertex="1" parent="1">
+          <mxGeometry x="140" y="930" width="1050" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="final_title" value="&lt;b&gt;最终主方案结论&lt;/b&gt;" style="text;html=1;fontSize=16;fontFamily=Microsoft YaHei;fontStyle=1;align=center;fillColor=none;strokeColor=none;fontColor=#2e7d32;" vertex="1" parent="1">
+          <mxGeometry x="500" y="940" width="250" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="final_e2" value="&lt;b&gt;分割/边界最优：E2&lt;/b&gt;&lt;br&gt;MicroNet-U-Net++ + Edge Head + Deep Supervision&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;Dice=0.9321  BF1=0.7276  VF=0.0371&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#43a047;fontFamily=Microsoft YaHei;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="180" y="980" width="440" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="final_e3" value="&lt;b&gt;⭐ 最均衡推荐：E3&lt;/b&gt;&lt;br&gt;E2 + VF Loss（统计约束）&lt;br&gt;&lt;font style=&quot;font-size:11px&quot;&gt;Dice=0.9309  BF1=0.7211  VF=0.0332&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#2e7d32;fontFamily=Microsoft YaHei;fontSize=12;shadow=1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="680" y="980" width="440" height="65" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="arrow_final" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeWidth=3;strokeColor=#43a047;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="r3_tag" target="final_box" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="80" y="910"/><mxPoint x="665" y="910"/></Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ===== 左侧阶段分组标注 ===== -->
+        <mxCell id="g1" value="基础&lt;br&gt;验证" style="text;html=1;fontSize=11;fontFamily=Microsoft YaHei;fontStyle=1;align=center;fillColor=none;strokeColor=none;fontColor=#1565c0;rotation=-90;" vertex="1" parent="1">
+          <mxGeometry x="-15" y="210" width="60" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="g2" value="核心&lt;br&gt;改进" style="text;html=1;fontSize=11;fontFamily=Microsoft YaHei;fontStyle=1;align=center;fillColor=none;strokeColor=none;fontColor=#e65100;rotation=-90;" vertex="1" parent="1">
+          <mxGeometry x="-15" y="465" width="60" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="g3" value="辅助&lt;br&gt;验证" style="text;html=1;fontSize=11;fontFamily=Microsoft YaHei;fontStyle=1;align=center;fillColor=none;strokeColor=none;fontColor=#7b1fa2;rotation=-90;" vertex="1" parent="1">
+          <mxGeometry x="-15" y="720" width="60" height="40" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,73 @@
+experiment:
+  name: mbu_netpp_smoke
+  output_root: C:\Users\pyd111\Desktop\中期\wd_bishe\experiments\mbu_netpp\outputs\smoke
+  seed: 42
+  save_best_by: dice
+
+data:
+  images_dir: C:\Users\pyd111\Desktop\中期\wd_bishe\samples\annotated_eval_set\raw_images
+  annotations_dir: C:\Users\pyd111\Desktop\中期\wd_bishe\samples\annotated_eval_set\annotations
+  prepared_root: C:\Users\pyd111\Desktop\中期\wd_bishe\experiments\mbu_netpp\workdir\prepared_smoke
+  positive_labels:
+    - gamma_prime
+  num_folds: 3
+  fold_seed: 42
+  fold_manifest_name: folds_3_seed42.json
+  edge_kernel: 3
+  auto_prepare: true
+  force_prepare: false
+  auto_crop_sem_region: true
+  crop_detection_ratio: 0.75
+  patch_size: 128
+  overlap: 0.25
+  samples_per_epoch: 6
+  normalization: minmax
+  preprocess:
+    enabled: false
+  augmentation:
+    horizontal_flip_p: 0.5
+    vertical_flip_p: 0.5
+    rotate90_p: 0.5
+    scale_p: 0.2
+    scale_limit: 0.08
+    brightness_contrast_p: 0.1
+    brightness_limit: 0.05
+    contrast_limit: 0.05
+    gaussian_noise_p: 0.1
+    noise_std_limit: 5.0
+    min_foreground_ratio: 0.01
+    min_edge_ratio: 0.001
+    crop_attempts: 8
+
+model:
+  name: unetpp
+  encoder_name: resnet18
+  encoder_weights_mode: none
+  micronet_checkpoint: ""
+  in_channels: 1
+  classes: 1
+  decoder_channels: [256, 128, 64, 32, 16]
+  use_edge_head: false
+  use_deep_supervision: false
+
+training:
+  device: cpu
+  batch_size: 1
+  num_workers: 0
+  epochs: 1
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  scheduler: cosine
+  amp: false
+  threshold: 0.5
+  boundary_tolerance: 1
+
+loss:
+  use_edge_loss: false
+  use_vf_loss: false
+  edge_weight: 0.3
+  deep_weight: 0.2
+  vf_weight: 0.1
+
+inference:
+  overlap: 0.25
