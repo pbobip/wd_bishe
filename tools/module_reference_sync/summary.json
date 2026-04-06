@@ -1,0 +1,24 @@
+﻿{
+    "generated_at":  "2026-04-06 19:24:18 +08:00",
+    "project_root":  "C:\\Users\\pyd111\\Desktop\\中期\\tmp\\module-library-sync",
+    "total_python_files":  408,
+    "total_python_size_bytes":  2371584,
+    "duplicate_sha256_groups":  26,
+    "duplicate_file_entries":  52,
+    "libraries":  [
+                      {
+                          "library":  "AI-F",
+                          "source_root":  "D:\\BaiduNetdiskDownload\\AI-F",
+                          "destination_root":  "tools\\module_reference_sync\\sources\\ai_f_py",
+                          "file_count":  181,
+                          "total_size_bytes":  939166
+                      },
+                      {
+                          "library":  "B站更新（和视频同步更新 日更）",
+                          "source_root":  "D:\\BaiduNetdiskDownload\\B站更新（和视频同步更新 日更）\\B站更新（和视频同步更新 日更）",
+                          "destination_root":  "tools\\module_reference_sync\\sources\\bilibili_daily_py",
+                          "file_count":  227,
+                          "total_size_bytes":  1432418
+                      }
+                  ]
+}
