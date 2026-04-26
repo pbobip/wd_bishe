@@ -1,7 +1,31 @@
 # 镍基单晶 SEM 图像分割统计系统
 
 本仓库对应毕业设计《面向扫描电镜图像的镍基单晶微观结构分割统计系统开发》。  
-截至 `2026-03-29`，**当前主方案**为 `MBU-Net++` 路线，前期的 `SAM LoRA`、`ResNeXt50`、`MatSAM + SAM2` 等结果保留为**尝试记录、对照路线或预标注工具**。
+截至 `2026-04-26`，**当前主方案**为 `MBU-Net++ boundary sampling` 路线，前期的 `SAM LoRA`、`ResNeXt50`、`MatSAM + SAM2` 等结果保留为**尝试记录、对照路线或预标注工具**。
+
+## 2026-04-26 最新口径
+
+当前仓库已经进入论文收束阶段，阅读时请优先采用本节口径，而不是 3 月份旧实验记录。
+
+| 模块 | 当前状态 |
+| --- | --- |
+| 系统代码 | FastAPI + Vue 3 开发版已包含任务创建、图像导入、标定提示、传统/DL 分割、后处理预览、统计分析、XLSX/JSON/ZIP/DOCX 导出 |
+| 深度学习接入 | 系统深度学习 runner 已绑定 `mbu_netpp`、`matsam`、`custom` 分支；论文主模型使用 `mbu_netpp` |
+| 主数据集 | 53 张 SEM 图像 + 53 个 LabelMe JSON，标签统一为 `gamma_prime`，共 4268 个 polygon |
+| 数据划分 | 固定 holdout10 测试集完全不参与训练；其余 43 张进行 5-fold 训练验证 |
+| 主模型结果 | `opt_real53_boundary_sampling` 在 holdout10 上 Dice=0.964984、IoU=0.932976、Boundary F1=0.929954、VF Error=0.024045 |
+| 传统 baseline | 最佳传统方法为 Otsu+CLAHE，holdout Dice≈0.893，低于 MBU-Net++ |
+| 论文材料 | 论文模型与实验说明、系统材料清单、模型图/系统图 AI 作图提示词已整理到 `毕业设计整理/` |
+
+关键论文材料入口：
+
+- [模型与实验部分说明](毕业设计整理/04_论文资料/模型与实验部分说明.md)
+- [模型与实验材料清单](毕业设计整理/04_论文资料/毕设模型与实验材料和说明清单.md)
+- [系统材料清单](毕业设计整理/毕设系统材料和说明清单_2026-04-26.md)
+- [最新状态说明](docs/LATEST_STATUS_2026-04-26.md)
+- [论文对比图表](results/paper_figures/)
+
+注意：模型权重、训练大包、服务器下载的完整结果目录、后端运行数据库和本地 storage 不纳入 git；需要复现实验时以配置、脚本、summary 文件和本地归档结果为准。
 
 ---
 
@@ -87,7 +111,7 @@ API 路由层 (FastAPI)
 
 | 模块 | 文件 | 功能 | 状态 |
 | --- | --- | --- | :---: |
-| API 路由 | `api/routes.py` | 项目/任务/图像/标定/模型管理 9 个端点 | ✅ |
+| API 路由 | `api/routes.py` | 任务/图像/标定/模型管理 端点 | ✅ |
 | 执行流水线 | `services/pipeline.py` | 六步串行流水线 + 进度报告 + 批量聚合 | ✅ |
 | SEM ROI 检测 | `services/sem_roi.py` | 底部信息栏自动分离 + 分析区域提取 + 比例尺横线定位 | ✅ |
 | 底栏 OCR | `services/sem_footer_ocr.py` | 比例尺数值/放大倍率/WD/检测器类型识别 → 自动算 um_per_px | ✅ |
@@ -98,14 +122,13 @@ API 路由层 (FastAPI)
 | 结果导出 | `services/exporter.py` | PNG 可视化 / CSV / XLSX 报表 / 打包下载 | ✅ |
 | 文件存储 | `services/storage.py` | 路径映射 / 静态文件服务 | ✅ |
 | 任务管理 | `services/task_manager.py` | 后台线程调度执行 | ✅ |
-| 数据模型 | `models/entities.py` | Project / RunTask / ImageAsset / MetricRecord / ExportRecord | ✅ |
+| 数据模型 | `models/entities.py` | RunTask / ImageAsset / MetricRecord / ExportRecord | ✅ |
 
 ### 前端页面完成度
 
 | 页面 | 文件 | 功能 | 状态 |
 | --- | --- | --- | :---: |
-| 仪表盘 | `DashboardView.vue` | 项目概览 + 快速入口 | ✅ |
-| 项目管理 | `ProjectManagementView.vue` | 项目 CRUD | ✅ |
+| 仪表盘 | `DashboardView.vue` | 快速入口 | ✅ |
 | 任务配置 | `TaskConfigView.vue` | 分割模式/预处理/标定/模型选择 | ✅ |
 | 任务执行 | `TaskRunView.vue` | 进度跟踪 + 实时状态 | ✅ |
 | 结果浏览 | `ResultsView.vue` | 分割结果查看 + 对比模式 | ✅ |
@@ -123,8 +146,7 @@ API 路由层 (FastAPI)
 | --- | --- | :---: |
 | MBU-Net++ 权重接入 | 将训练产出的最优权重 (.pth) 注册到系统 model-runner | 🔴 高 |
 | 端到端演示验证 | 完整走通「上传 → 分割 → 统计 → 导出」流程 | 🔴 高 |
-| 一键启动脚本 | `start.bat` 同时启动前后端 | 🟡 中 |
-| 结果对比页面增强 | 传统/DL 分割结果并排对比展示 | 🟡 中 |
+| 一键启动脚本 | `start.bat` 一键拉起前后端并做端口检查 | ✅ |
 
 ---
 
@@ -142,6 +164,42 @@ API 路由层 (FastAPI)
 2. 人工逐张修正漏检/过分割/边界误差
 
 详见 [`docs/MatSAM_粗标注思路.md`](docs/MatSAM_粗标注思路.md)
+
+---
+
+## 开发启动
+
+默认开发入口是仓库根目录的 `start.bat`：
+
+```bat
+start.bat
+```
+
+它会同时完成这几件事：
+
+- 启动前端 `Vite`，固定使用 `http://127.0.0.1:5173/`
+- 启动后端 `FastAPI/Uvicorn`，固定使用 `http://127.0.0.1:8000/api/health`
+- 检查 `5173` 和 `8000` 端口是否被别的进程占用
+- 清理当前仓库残留的前后端旧进程，避免只起半边或端口漂移到 `5174`
+- 把启动日志写到 `output/frontend-dev.log` 和 `output/backend-dev.log`
+
+如果脚本提示端口被其他进程占用，请先结束占用端口的非本仓库进程，再重新执行 `start.bat`。
+
+---
+
+## 快速代码导航
+
+如果你现在是想快速定位“前端主流程改造、后端执行链路、模型实验代码”分别在哪，直接看下面三个入口：
+
+- 前端代码地图：[`frontend/README.md`](frontend/README.md)
+- 后端代码地图：[`backend/README.md`](backend/README.md)
+- 模型实验代码地图：[`experiments/mbu_netpp/CODEMAP.md`](experiments/mbu_netpp/CODEMAP.md)
+
+如果你只想 review 本轮“01 任务创建 → 02 结果与后处理 → 03 统计分析 → 04 历史记录”的流程重构，不想被工作区里的模型实验和结果产物干扰，直接看：
+
+- [`docs/CODEBASE_STREAMS_2026-04-23.md`](docs/CODEBASE_STREAMS_2026-04-23.md)
+- [`docs/COMMIT_GROUPS_2026-04-23.md`](docs/COMMIT_GROUPS_2026-04-23.md)
+- [`docs/WORKTREE_REVIEW_SPLIT_2026-04-23.md`](docs/WORKTREE_REVIEW_SPLIT_2026-04-23.md)
 
 ---
 

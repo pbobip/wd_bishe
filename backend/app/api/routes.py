@@ -9,17 +9,25 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
-from backend.app.models.entities import ExportRecord, ImageAsset, MetricRecord, ModelRunner, Project, RunTask
-from backend.app.schemas.project import ProjectCreate, ProjectRead
+from backend.app.models.entities import ExportRecord, ImageAsset, MetricRecord, ModelRunner, RunTask
 from backend.app.schemas.run import (
     ImageAssetRead,
     ModelRunnerCreate,
     ModelRunnerRead,
+    PostprocessConfirmCreate,
+    PostprocessConfirmRead,
     PreprocessConfig,
+    PostprocessPreviewCreate,
+    PostprocessPreviewRead,
     RunCreate,
     RunRead,
     RunResultResponse,
     RunStepRead,
+)
+from backend.app.services.postprocess_preview import (
+    PreviewConflictError,
+    PreviewNotFoundError,
+    postprocess_preview_service,
 )
 from backend.app.services.sem_footer_ocr import sem_footer_ocr_service
 from backend.app.services.preprocess import preprocess_service
@@ -32,8 +40,19 @@ from backend.app.utils.image_io import decode_gray_bytes
 router = APIRouter()
 
 
-def _encode_preview_data_url(image) -> str:
-    ok, encoded = cv2.imencode(".png", image)
+def _encode_preview_data_url(image, max_edge: int | None = None) -> str:
+    preview = image
+    if max_edge and max_edge > 0:
+        height, width = image.shape[:2]
+        longest_edge = max(height, width)
+        if longest_edge > max_edge:
+            scale = max_edge / float(longest_edge)
+            preview = cv2.resize(
+                image,
+                (max(1, int(width * scale)), max(1, int(height * scale))),
+                interpolation=cv2.INTER_AREA,
+            )
+    ok, encoded = cv2.imencode(".png", preview)
     if not ok:
         raise ValueError("无法编码预览图像")
     payload = base64.b64encode(encoded.tobytes()).decode("ascii")
@@ -45,36 +64,6 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/projects", response_model=list[ProjectRead])
-def list_projects(db: Session = Depends(get_db)) -> list[Project]:
-    return db.scalars(select(Project).order_by(Project.created_at.desc())).all()
-
-
-@router.post("/projects", response_model=ProjectRead)
-def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Project:
-    project = Project(name=payload.name, description=payload.description)
-    db.add(project)
-    db.commit()
-    db.refresh(project)
-    return project
-
-
-@router.delete("/projects/{project_id}")
-def delete_project(project_id: int, db: Session = Depends(get_db)) -> dict[str, bool | int]:
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="项目不存在")
-
-    run_ids = [run.id for run in project.runs]
-    db.delete(project)
-    db.commit()
-
-    for run_id in run_ids:
-        storage_service.delete_run_dir(run_id)
-
-    return {"id": project_id, "deleted": True}
-
-
 @router.get("/runs", response_model=list[RunRead])
 def list_runs(db: Session = Depends(get_db)) -> list[RunTask]:
     return db.scalars(select(RunTask).order_by(RunTask.created_at.desc())).all()
@@ -82,11 +71,7 @@ def list_runs(db: Session = Depends(get_db)) -> list[RunTask]:
 
 @router.post("/runs", response_model=RunRead)
 def create_run(payload: RunCreate, db: Session = Depends(get_db)) -> RunTask:
-    project = db.get(Project, payload.project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="项目不存在")
     run = RunTask(
-        project_id=payload.project_id,
         name=payload.name,
         input_mode=payload.input_mode,
         segmentation_mode=payload.segmentation_mode,
@@ -109,11 +94,6 @@ def update_run(run_id: int, payload: RunCreate, db: Session = Depends(get_db)) -
     if run.status not in {"draft", "queued"}:
         raise HTTPException(status_code=400, detail="当前任务状态不允许更新配置")
 
-    project = db.get(Project, payload.project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="项目不存在")
-
-    run.project_id = payload.project_id
     run.name = payload.name
     run.input_mode = payload.input_mode
     run.segmentation_mode = payload.segmentation_mode
@@ -187,6 +167,7 @@ async def calibration_hint(file: UploadFile = File(...)) -> dict[str, object]:
 
     return {
         "file_name": file.filename,
+        "preview_url": _encode_preview_data_url(image, max_edge=320),
         "footer_detected": roi.cropped_footer,
         "background_cropped": roi.cropped_background,
         "source_width_px": int(roi.source_shape[1]),
@@ -236,13 +217,9 @@ async def calibration_hint(file: UploadFile = File(...)) -> dict[str, object]:
         "suggested_um_per_px": suggested_um_per_px,
         "common_scale_candidates": common_scales,
         "message": (
-            f"已自动识别比例尺约 {footer_ocr.scale_bar_um:g} μm，对应 {scale_bar.pixel_length} px，可直接采用建议值。"
+            "已自动标定，可直接使用建议值。"
             if scale_bar and footer_ocr and footer_ocr.scale_bar_um
-            else (
-                "已检测到底部信息栏与比例尺横线，请结合底栏文字确认该比例尺对应的微米数值。"
-                if scale_bar
-                else "未检测到可用比例尺横线，请手动填写 um_per_px。"
-            )
+            else "未自动标定，请手动填写 um/px。"
         ),
     }
 
@@ -343,6 +320,47 @@ def get_run_results(run_id: int, db: Session = Depends(get_db)) -> RunResultResp
             }
             for export in exports
         ],
+    )
+
+
+@router.post("/runs/{run_id}/postprocess/preview", response_model=PostprocessPreviewRead)
+def create_postprocess_preview(
+    run_id: int,
+    payload: PostprocessPreviewCreate,
+    db: Session = Depends(get_db),
+) -> PostprocessPreviewRead:
+    try:
+        preview = postprocess_preview_service.create_preview(
+            db,
+            run_id,
+            payload.mode,
+            payload.postprocess,
+            selected_image_id=payload.selected_image_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return PostprocessPreviewRead.model_validate(preview)
+
+
+@router.post("/runs/{run_id}/postprocess/confirm", response_model=PostprocessConfirmRead)
+def confirm_postprocess_preview(
+    run_id: int,
+    payload: PostprocessConfirmCreate,
+    db: Session = Depends(get_db),
+) -> PostprocessConfirmRead:
+    try:
+        result = postprocess_preview_service.confirm_preview(db, run_id, payload.preview_token)
+    except PreviewNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PreviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PostprocessConfirmRead(
+        run=RunRead.model_validate(result["run"]),
+        mode=str(result["mode"]),
+        image_count=int(result["image_count"]),
     )
 
 

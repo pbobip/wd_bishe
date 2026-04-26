@@ -1,13 +1,5 @@
-export type SegmentationMode = 'traditional' | 'dl' | 'compare'
+export type SegmentationMode = 'traditional' | 'dl'
 export type InputMode = 'single' | 'batch'
-
-export interface Project {
-  id: number
-  name: string
-  description?: string | null
-  created_at?: string
-  updated_at?: string
-}
 
 export interface ModelRunner {
   id: number
@@ -22,7 +14,6 @@ export interface ModelRunner {
 
 export interface RunRecord {
   id: number
-  project_id: number
   name: string
   input_mode: InputMode
   segmentation_mode: SegmentationMode
@@ -81,4 +72,26 @@ export interface RunResultsPayload {
     url: string
     path: string
   }>
+}
+
+export interface PostprocessPreviewPayload {
+  preview_token: string
+  mode: 'traditional' | 'dl'
+  image_id: number
+  image_name: string
+  before_mask_url: string | null
+  after_mask_url: string | null
+  before_overlay_url: string | null
+  after_overlay_url: string | null
+  before_object_overlay_url: string | null
+  after_object_overlay_url: string | null
+  before_summary: Record<string, any>
+  after_summary: Record<string, any>
+  image_count: number
+}
+
+export interface PostprocessConfirmPayload {
+  run: RunRecord
+  mode: 'traditional' | 'dl'
+  image_count: number
 }

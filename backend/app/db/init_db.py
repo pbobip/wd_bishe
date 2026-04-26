@@ -5,13 +5,28 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.core.config import SETTINGS
-from backend.app.db.base import Base
 from backend.app.db.session import engine
-from backend.app.models.entities import ModelRunner, Project
+from backend.app.db.base import Base
+from backend.app.core.config import SETTINGS
+from backend.app.models.entities import ModelRunner
 
 
 DEFAULT_RUNNERS = [
+    {
+        "slot": "mbu_netpp",
+        "display_name": "MBU-Net++ 主模型",
+        "python_path": r"C:\Users\pyd111\anaconda3\python.exe",
+        "env_name": "base",
+        "weight_path": str(
+            SETTINGS.backend_dir.parent
+            / "results"
+            / "opt_real53_suite"
+            / "experiments"
+            / "opt_real53_boundary_sampling"
+            / "best.pt"
+        ),
+        "extra_config": {"model_kind": "mbu_netpp"},
+    },
     {
         "slot": "sam_lora",
         "display_name": "SAM LoRA",
@@ -66,8 +81,6 @@ def init_db() -> None:
 
 
 def seed_defaults(session: Session) -> None:
-    if session.scalar(select(Project.id).limit(1)) is None:
-        session.add(Project(name="默认项目", description="毕设系统默认项目"))
     existing_slots = {slot for slot in session.scalars(select(ModelRunner.slot)).all()}
     for runner in DEFAULT_RUNNERS:
         if runner["slot"] in existing_slots:

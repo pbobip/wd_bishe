@@ -16,21 +16,10 @@ class TimestampMixin:
     )
 
 
-class Project(TimestampMixin, Base):
-    __tablename__ = "projects"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    runs: Mapped[list["RunTask"]] = relationship(back_populates="project", cascade="all, delete-orphan")
-
-
 class RunTask(TimestampMixin, Base):
     __tablename__ = "run_tasks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     input_mode: Mapped[str] = mapped_column(String(20), nullable=False)
     segmentation_mode: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -44,7 +33,6 @@ class RunTask(TimestampMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    project: Mapped["Project"] = relationship(back_populates="runs")
     images: Mapped[list["ImageAsset"]] = relationship(back_populates="run", cascade="all, delete-orphan")
     steps: Mapped[list["RunStep"]] = relationship(back_populates="run", cascade="all, delete-orphan")
     metrics: Mapped[list["MetricRecord"]] = relationship(back_populates="run", cascade="all, delete-orphan")

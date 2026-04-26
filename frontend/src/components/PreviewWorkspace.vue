@@ -23,9 +23,24 @@ const NUMBERED_ARTIFACT_KEYS = [
   'id_overlay_url',
 ]
 
-const props = defineProps<{
-  images: RunResultImage[]
-  mode: string
+const props = withDefaults(
+  defineProps<{
+    images: RunResultImage[]
+    mode: string
+    currentImageId?: number | null
+    currentMode?: string | null
+    emptyDescription?: string
+  }>(),
+  {
+    currentImageId: null,
+    currentMode: null,
+    emptyDescription: '运行完成后会在这里显示图像核查结果',
+  },
+)
+
+const emit = defineEmits<{
+  'update:currentImageId': [value: number | null]
+  'update:currentMode': [value: string | null]
 }>()
 
 const currentId = ref<number | null>(null)
@@ -46,30 +61,9 @@ const scrollStartTop = ref(0)
 const naturalWidth = ref(0)
 const naturalHeight = ref(0)
 
-const readNumber = (value: unknown): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return null
-}
-
-const formatNumber = (value: unknown, digits = 2) => {
-  const numberValue = readNumber(value)
-  return numberValue == null ? '--' : numberValue.toFixed(digits)
-}
-
-const formatPercent = (value: unknown) => {
-  const numberValue = readNumber(value)
-  return numberValue == null ? '--' : `${(numberValue * 100).toFixed(2)}%`
-}
-
-const formatUnitValue = (value: unknown, unit: unknown, digits = 2) => {
-  const numberValue = readNumber(value)
-  if (numberValue == null) return '--'
-  return `${numberValue.toFixed(digits)} ${String(unit ?? '')}`.trim()
-}
+const MIN_PREVIEW_ZOOM = 1
+const MAX_PREVIEW_ZOOM = 6
+const PREVIEW_ZOOM_STEP = 0.12
 
 const modeLabel = (mode: string) => {
   if (mode === 'traditional') return '传统分割'
@@ -204,49 +198,6 @@ const currentArtifact = computed(
     null,
 )
 
-const currentSummary = computed<Record<string, unknown> | null>(
-  () => currentImage.value?.modes[selectedMode.value]?.summary ?? null,
-)
-
-const currentSummaryCards = computed(() => {
-  const summary = currentSummary.value ?? {}
-  const cards = [
-    {
-      label: 'Vf',
-      value: formatPercent(summary.volume_fraction),
-    },
-    {
-      label: '颗粒数',
-      value: formatNumber(summary.particle_count, 0),
-    },
-    {
-      label: '平均尺寸',
-      value: formatUnitValue(summary.mean_size, summary.size_unit ?? summary.diameter_unit ?? 'px'),
-    },
-    {
-      label: '平均面积',
-      value: formatUnitValue(summary.mean_area, summary.area_unit ?? 'px^2'),
-    },
-  ]
-
-  const channelWidthX = readNumber(summary.mean_channel_width_x)
-  const channelWidthY = readNumber(summary.mean_channel_width_y)
-  const channelWidthUnit = summary.channel_width_unit ?? summary.size_unit ?? 'px'
-
-  if (channelWidthX != null || channelWidthY != null) {
-    cards.push({
-      label: '水平 W',
-      value: formatUnitValue(summary.mean_channel_width_x, channelWidthUnit),
-    })
-    cards.push({
-      label: '垂直 W',
-      value: formatUnitValue(summary.mean_channel_width_y, channelWidthUnit),
-    })
-  }
-
-  return cards.filter((card) => card.value !== '--')
-})
-
 const imageOptions = computed(() =>
   props.images.map((image, index) => ({
     value: image.image_id,
@@ -278,13 +229,22 @@ const previewImageStyle = computed(() => {
 })
 
 watch(
-  () => props.images,
-  (images) => {
+  () => [props.images, props.currentImageId] as const,
+  ([images, externalCurrentImageId]) => {
+    const requested = images.find((image) => image.image_id === externalCurrentImageId)
     const existing = images.find((image) => image.image_id === currentId.value)
-    currentId.value = existing?.image_id ?? images[0]?.image_id ?? null
+    currentId.value = requested?.image_id ?? existing?.image_id ?? images[0]?.image_id ?? null
   },
   { immediate: true },
 )
+
+watch(currentId, (value) => {
+  emit('update:currentImageId', value)
+})
+
+watch(selectedMode, (value) => {
+  emit('update:currentMode', value || null)
+})
 
 watch(
   availableModes,
@@ -293,15 +253,25 @@ watch(
       selectedMode.value = ''
       return
     }
+    if (props.currentMode && modes.includes(props.currentMode)) {
+      selectedMode.value = props.currentMode
+      return
+    }
     if (!modes.includes(selectedMode.value)) {
-      if (props.mode !== 'compare' && modes.includes(props.mode)) {
-        selectedMode.value = props.mode
-      } else {
-        selectedMode.value = modes[0]
-      }
+      selectedMode.value = modes.includes(props.mode) ? props.mode : modes[0]
     }
   },
   { immediate: true },
+)
+
+watch(
+  () => props.currentMode,
+  (value) => {
+    if (!value) return
+    if (availableModes.value.includes(value) && selectedMode.value !== value) {
+      selectedMode.value = value
+    }
+  },
 )
 
 watch(
@@ -340,15 +310,27 @@ const openPreview = (title: string, url?: string | null) => {
   previewVisible.value = true
 }
 
-const showOriginalSize = () => {
+const showOriginalSize = async () => {
   fitToWindow.value = false
   zoom.value = 1
+  await nextTick()
+  if (previewContainerRef.value) {
+    previewContainerRef.value.scrollLeft = 0
+    previewContainerRef.value.scrollTop = 0
+  }
 }
 
-const resetToFit = () => {
+const resetToFit = async () => {
   fitToWindow.value = true
   zoom.value = 1
+  await nextTick()
+  if (previewContainerRef.value) {
+    previewContainerRef.value.scrollLeft = 0
+    previewContainerRef.value.scrollTop = 0
+  }
 }
+
+const getPreviewBaseZoom = () => (fitToWindow.value ? MIN_PREVIEW_ZOOM : zoom.value)
 
 const onPreviewImageLoad = () => {
   if (!previewImageRef.value) return
@@ -374,11 +356,27 @@ const applyZoomAroundPoint = async (nextZoom: number, clientX?: number, clientY?
   container.scrollTop = Math.max(0, imageY * nextZoom - offsetY)
 }
 
+const zoomInPreview = async (clientX?: number, clientY?: number) => {
+  const nextZoom = Math.min(MAX_PREVIEW_ZOOM, +(getPreviewBaseZoom() + PREVIEW_ZOOM_STEP).toFixed(2))
+  await applyZoomAroundPoint(nextZoom, clientX, clientY)
+}
+
+const zoomOutPreview = async (clientX?: number, clientY?: number) => {
+  const nextZoom = Math.max(MIN_PREVIEW_ZOOM, +(getPreviewBaseZoom() - PREVIEW_ZOOM_STEP).toFixed(2))
+  if (nextZoom <= MIN_PREVIEW_ZOOM) {
+    resetToFit()
+    return
+  }
+  await applyZoomAroundPoint(nextZoom, clientX, clientY)
+}
+
 const onWheelZoom = async (event: WheelEvent) => {
   event.preventDefault()
-  const baseZoom = fitToWindow.value ? 1 : zoom.value
-  const nextZoom = Math.min(6, Math.max(0.2, +(baseZoom + (event.deltaY < 0 ? 0.12 : -0.12)).toFixed(2)))
-  await applyZoomAroundPoint(nextZoom, event.clientX, event.clientY)
+  if (event.deltaY < 0) {
+    await zoomInPreview(event.clientX, event.clientY)
+    return
+  }
+  await zoomOutPreview(event.clientX, event.clientY)
 }
 
 const onPointerDown = (event: MouseEvent) => {
@@ -405,13 +403,11 @@ const stopDragging = () => {
 <template>
   <div class="glass-card preview-shell">
     <div class="preview-header">
-      <div>
+      <div class="preview-header-top">
         <h3 class="section-title">图像核查</h3>
-        <p class="section-subtitle">优先核对原图、分析区域与分割图层，确认结果可信后再进入统计分析。</p>
       </div>
 
       <div class="preview-nav">
-        <el-button plain @click="goToImage(-1)" :disabled="currentIndex <= 0">上一张</el-button>
         <el-select v-model="currentId" placeholder="选择图像" class="preview-select">
           <el-option
             v-for="option in imageOptions"
@@ -420,33 +416,20 @@ const stopDragging = () => {
             :value="option.value"
           />
         </el-select>
-        <div class="image-counter">{{ currentIndex + 1 }} / {{ images.length }}</div>
-        <el-button plain @click="goToImage(1)" :disabled="currentIndex < 0 || currentIndex >= images.length - 1">下一张</el-button>
+        <div class="preview-nav-actions">
+          <el-button class="preview-nav-button" plain @click="goToImage(-1)" :disabled="currentIndex <= 0">上一张</el-button>
+          <el-button class="preview-nav-button" plain @click="goToImage(1)" :disabled="currentIndex < 0 || currentIndex >= images.length - 1">下一张</el-button>
+          <span class="preview-nav-counter">第 {{ currentIndex + 1 }} / {{ images.length }} 张</span>
+        </div>
       </div>
-    </div>
-
-    <div v-if="images.length > 1" class="image-sequence">
-      <button
-        v-for="image in images"
-        :key="image.image_id"
-        type="button"
-        class="sequence-chip"
-        :class="{ 'is-active': image.image_id === currentId }"
-        @click="currentId = image.image_id"
-      >
-        {{ image.image_name }}
-      </button>
     </div>
 
     <div v-if="currentImage" class="inspection-grid">
       <section class="stage-card">
         <div class="stage-header">
           <div>
-            <span class="stage-badge">{{ currentImage.image_name }}</span>
             <h4 class="stage-title">{{ currentArtifact?.label ?? '结果预览' }}</h4>
-            <p class="stage-hint">{{ currentArtifact?.hint ?? '切换不同图层核查当前图像结果。' }}</p>
           </div>
-          <el-button plain size="small" @click="openPreview(`${currentArtifact?.label ?? '预览'} · ${currentImage.image_name}`, currentArtifact?.url)">查看大图</el-button>
         </div>
 
         <div
@@ -462,6 +445,7 @@ const stopDragging = () => {
           />
           <el-empty v-else description="当前图层暂无结果" />
         </div>
+
       </section>
 
       <aside class="artifact-rail">
@@ -494,36 +478,20 @@ const stopDragging = () => {
               @click="selectArtifact(item.key)"
             >
               <strong>{{ item.label }}</strong>
-              <span>{{ item.hint }}</span>
             </button>
-          </div>
-        </section>
-
-        <section v-if="currentSummaryCards.length" class="artifact-panel">
-          <div class="panel-heading panel-heading--compact">
-            <div>
-              <span class="panel-eyebrow">摘要</span>
-              <h4>当前图像统计</h4>
-            </div>
-          </div>
-
-          <div class="summary-grid">
-            <article v-for="card in currentSummaryCards" :key="card.label" class="summary-card">
-              <span>{{ card.label }}</span>
-              <strong>{{ card.value }}</strong>
-            </article>
           </div>
         </section>
       </aside>
     </div>
 
-    <el-empty v-else description="运行完成后会在这里显示图像核查结果" />
+    <el-empty v-else :description="props.emptyDescription" />
 
     <el-dialog
       v-model="previewVisible"
       :title="previewTitle"
       width="86vw"
       top="4vh"
+      :lock-scroll="false"
       destroy-on-close
       append-to-body
       class="preview-dialog"
@@ -531,9 +499,9 @@ const stopDragging = () => {
       <div class="preview-toolbar-actions">
         <el-button size="small" @click="resetToFit">适配窗口</el-button>
         <el-button size="small" @click="showOriginalSize">查看原始尺寸</el-button>
-        <el-button size="small" @click="applyZoomAroundPoint(Math.max(0.2, +(zoom - 0.12).toFixed(2)))" :disabled="fitToWindow">-</el-button>
+        <el-button size="small" @click="() => zoomOutPreview()">-</el-button>
         <span class="zoom-indicator">{{ Math.round(zoom * 100) }}%</span>
-        <el-button size="small" @click="applyZoomAroundPoint(Math.min(6, +(zoom + 0.12).toFixed(2)))" :disabled="fitToWindow">+</el-button>
+        <el-button size="small" @click="() => zoomInPreview()">+</el-button>
       </div>
       <div
         ref="previewContainerRef"
@@ -571,66 +539,59 @@ const stopDragging = () => {
 }
 
 .preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 18px;
+  display: grid;
+  gap: 14px;
   min-width: 0;
+}
+
+.preview-header-top {
+  min-width: 0;
+}
+
+.preview-header .section-title {
+  margin: 0;
+  white-space: nowrap;
 }
 
 .preview-nav {
   display: flex;
-  align-items: center;
-  gap: 10px;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(31, 40, 48, 0.06);
+}
+
+.preview-nav-button {
+  min-height: 42px;
+  padding-inline: 18px;
+  border-radius: 14px;
+  font-weight: 600;
 }
 
 .preview-select {
-  width: 240px;
-  max-width: 100%;
+  flex: 1 1 320px;
+  min-width: 0;
 }
 
-.image-counter {
-  min-width: 70px;
-  padding: 10px 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.68);
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-  text-align: center;
-}
-
-.image-sequence {
+.preview-nav-actions {
+  margin-left: auto;
   display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
-.sequence-chip {
-  flex: 0 0 auto;
-  border: 1px solid rgba(31, 40, 48, 0.08);
-  background: rgba(255, 255, 255, 0.62);
+.preview-nav-counter {
   color: var(--muted);
-  padding: 10px 14px;
-  border-radius: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
-}
-
-.sequence-chip:hover {
-  transform: translateY(-1px);
-  border-color: rgba(23, 96, 135, 0.16);
-}
-
-.sequence-chip.is-active {
-  color: var(--accent);
-  background: rgba(23, 96, 135, 0.12);
-  border-color: rgba(23, 96, 135, 0.18);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .inspection-grid {
@@ -638,6 +599,7 @@ const stopDragging = () => {
   grid-template-columns: minmax(0, 1.48fr) minmax(280px, 360px);
   gap: 16px;
   min-width: 0;
+  align-items: start;
 }
 
 .stage-card,
@@ -656,44 +618,37 @@ const stopDragging = () => {
 
 .stage-header {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
-  gap: 14px;
 }
 
 .stage-title {
-  margin: 8px 0 6px;
+  margin: 0 0 6px;
   font-size: 24px;
   line-height: 1.18;
 }
 
-.stage-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 12px;
-  border-radius: 999px;
-  background: rgba(23, 96, 135, 0.08);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.stage-hint {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
 .stage-frame {
-  min-height: 420px;
-  max-height: min(72vh, 760px);
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(18, 23, 28, 0.96), rgba(31, 37, 42, 0.92));
 }
 
-.stage-frame img.fit-contain {
+.stage-frame img {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
   object-fit: contain;
+  object-position: center;
   background: rgba(20, 24, 28, 0.92);
 }
 
+.stage-frame--footer {
+  min-height: 0;
+}
+
+.stage-frame img.fit-contain,
 .stage-frame--footer img {
   object-fit: contain;
   background: rgba(20, 24, 28, 0.92);
@@ -770,12 +725,6 @@ const stopDragging = () => {
   line-height: 1.3;
 }
 
-.artifact-button span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .artifact-button.is-active {
   border-color: rgba(23, 96, 135, 0.18);
   background: linear-gradient(135deg, rgba(23, 96, 135, 0.12), rgba(47, 139, 192, 0.08));
@@ -783,32 +732,6 @@ const stopDragging = () => {
 
 .mode-switch {
   width: 100%;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.summary-card {
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(31, 40, 48, 0.08);
-}
-
-.summary-card span {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.summary-card strong {
-  font-size: 18px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
 }
 
 .clickable-frame {
@@ -876,34 +799,32 @@ const stopDragging = () => {
     order: -1;
   }
 
-  .summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 920px) {
-  .preview-header,
   .stage-header {
     flex-direction: column;
     align-items: stretch;
   }
 
   .preview-nav {
-    justify-content: flex-start;
+    align-items: stretch;
   }
 
-  .preview-select {
+  .preview-nav-actions {
     width: 100%;
+    margin-left: 0;
+    justify-content: stretch;
   }
 
-  .stage-frame {
-    min-height: 320px;
+  .preview-nav-button {
+    flex: 1 1 0;
+    min-width: 0;
   }
-}
 
-@media (max-width: 640px) {
-  .summary-grid {
-    grid-template-columns: 1fr 1fr;
+  .preview-nav-counter {
+    width: 100%;
+    text-align: right;
   }
 }
 </style>

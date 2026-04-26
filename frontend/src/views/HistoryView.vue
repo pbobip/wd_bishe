@@ -48,7 +48,6 @@ onMounted(() => {
       <div class="history-header">
         <div>
           <h2 class="section-title">历史记录</h2>
-          <p class="section-subtitle">查看每次任务的状态、模式、进度与结果入口</p>
         </div>
         <el-button @click="loadRuns">刷新</el-button>
       </div>
@@ -64,9 +63,17 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" min-width="180" />
-        <el-table-column label="操作" width="120">
+        <el-table-column label="操作" width="170">
           <template #default="{ row }">
-            <el-button type="primary" link @click="router.push(`/runs/${row.id}`)">查看</el-button>
+            <el-button type="primary" link @click="router.push(`/runs/${row.id}`)">结果页</el-button>
+            <el-button
+              type="primary"
+              link
+              :disabled="!['completed', 'partial_success'].includes(row.status)"
+              @click="router.push(`/runs/${row.id}/statistics`)"
+            >
+              统计
+            </el-button>
           </template>
         </el-table-column>
       </el-table>

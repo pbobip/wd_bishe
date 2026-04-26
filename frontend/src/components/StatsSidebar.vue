@@ -1,92 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-
-import type { RunRecord } from '../types'
+import JSZip from 'jszip'
+import { ElMessage } from 'element-plus'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps<{
-  run: RunRecord
-  summary: Record<string, any> | null | undefined
   exports: Array<{ id: number; kind: string; url: string; path: string }>
 }>()
 
-const modeLabel = (mode: string) => {
-  if (mode === 'traditional') return '传统分割'
-  if (mode === 'dl') return '深度学习'
-  return mode
-}
-
-const formatNumber = (value: unknown, digits = 2) => {
-  const numeric = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(numeric)) return '--'
-  return numeric.toFixed(digits)
-}
-
-const batchModes = computed(() => Object.entries((props.summary?.batch ?? {}) as Record<string, Record<string, unknown>>))
-
-const runOverview = computed(() => {
-  const firstMode = batchModes.value[0]?.[1] as Record<string, unknown> | undefined
-  return [
-    { label: '状态', value: props.run.status },
-    { label: '模式', value: props.run.segmentation_mode },
-    { label: '输入', value: props.run.input_mode },
-    { label: '图像数', value: String(firstMode?.image_count ?? '--') },
-  ]
-})
-
-const metricGroups = computed(() =>
-  batchModes.value.map(([mode, info]) => {
-    const row = info as Record<string, unknown>
-    const metrics = [
-      { label: '平均 Vf', value: `${formatNumber((Number(row.avg_volume_fraction) || 0) * 100, 2)}%` },
-      { label: '平均颗粒数', value: formatNumber(row.avg_particle_count, 1) },
-      { label: '图均平均尺寸', value: `${formatNumber(row.avg_image_mean_size, 2)} ${String(row.size_unit ?? 'px')}` },
-    ]
-
-    const channelX = Number(row.avg_image_mean_channel_width_x)
-    const channelY = Number(row.avg_image_mean_channel_width_y)
-    if (Number.isFinite(channelX) || Number.isFinite(channelY)) {
-      metrics.push({
-        label: '水平 W',
-        value: `${formatNumber(row.avg_image_mean_channel_width_x, 2)} ${String(row.channel_width_unit ?? row.size_unit ?? 'px')}`,
-      })
-      metrics.push({
-        label: '垂直 W',
-        value: `${formatNumber(row.avg_image_mean_channel_width_y, 2)} ${String(row.channel_width_unit ?? row.size_unit ?? 'px')}`,
-      })
-    }
-
-    return {
-      mode,
-      label: modeLabel(mode),
-      metrics,
-    }
-  }),
-)
-
-const EXPORT_KIND_META: Record<string, { label: string; note: string }> = {
-  bundle: {
-    label: '全部结果包',
-    note: 'ZIP 整包，包含统计表、统计图、预测结果和配置快照',
-  },
-  csv: {
-    label: '统计总表 CSV',
-    note: '图像级主统计表',
-  },
+const EXPORT_KIND_META: Record<string, { label: string; note: string; imageKind?: boolean }> = {
   xlsx: {
     label: '统计总表 XLSX',
     note: '图像级主统计表',
   },
-  batch_csv: {
-    label: '批次汇总 CSV',
-    note: '批量任务均值与区间汇总',
-  },
   batch_xlsx: {
     label: '批次汇总 XLSX',
     note: '批量任务均值与区间汇总',
-  },
-  particles_csv: {
-    label: '颗粒明细 CSV',
-    note: '对象级颗粒统计明细',
   },
   particles_xlsx: {
     label: '颗粒明细 XLSX',
@@ -96,16 +24,36 @@ const EXPORT_KIND_META: Record<string, { label: string; note: string }> = {
     label: '配置快照 JSON',
     note: '本次任务参数记录',
   },
+  overlay: {
+    label: '分割叠加图',
+    note: '原图 + 分割掩膜叠加',
+    imageKind: true,
+  },
+  mask: {
+    label: '分割掩膜图',
+    note: '纯二值分割掩膜',
+    imageKind: true,
+  },
+  docx_report: {
+    label: '实验报告 Word',
+    note: '规范化实验报告（.docx）',
+  },
 }
 
+const IMAGE_KINDS = new Set(
+  Object.entries(EXPORT_KIND_META)
+    .filter(([, v]) => v.imageKind)
+    .map(([k]) => k),
+)
+
 const exportPriority: Record<string, number> = {
-  csv: 1,
-  xlsx: 2,
-  batch_csv: 3,
-  batch_xlsx: 4,
-  particles_csv: 5,
-  particles_xlsx: 6,
-  config: 7,
+  docx_report: 0,
+  xlsx: 1,
+  batch_xlsx: 2,
+  particles_xlsx: 3,
+  overlay: 4,
+  mask: 5,
+  config: 6,
 }
 
 const getExportMeta = (kind: string) =>
@@ -113,8 +61,6 @@ const getExportMeta = (kind: string) =>
     label: kind,
     note: '导出文件',
   }
-
-const bundleExport = computed(() => props.exports.find((file) => file.kind === 'bundle') ?? null)
 
 const singleExports = computed(() =>
   props.exports
@@ -126,312 +72,438 @@ const singleExports = computed(() =>
       return leftPriority - rightPriority || left.id - right.id
     }),
 )
+
+const selectedIds = ref<number[]>([])
+const isExporting = ref(false)
+const selectionInitialized = ref(false)
+
+const availableSingleIds = computed(() => singleExports.value.map((file) => file.id))
+
+watch(
+  availableSingleIds,
+  (ids) => {
+    if (!ids.length) {
+      selectedIds.value = []
+      return
+    }
+
+    if (!selectionInitialized.value) {
+      selectedIds.value = ids.slice()
+      selectionInitialized.value = true
+      return
+    }
+
+    const available = new Set(ids)
+    const nextSelected = selectedIds.value.filter((id) => available.has(id))
+    if (nextSelected.length !== selectedIds.value.length) {
+      selectedIds.value = nextSelected
+    }
+  },
+  { immediate: true },
+)
+
+const selectedFiles = computed(() => singleExports.value.filter((file) => selectedIds.value.includes(file.id)))
+const selectedCount = computed(() => selectedFiles.value.length)
+const allSelected = computed(() => singleExports.value.length > 0 && selectedCount.value === singleExports.value.length)
+
+const selectAll = () => {
+  selectedIds.value = availableSingleIds.value.slice()
+  if (availableSingleIds.value.length) {
+    selectionInitialized.value = true
+  }
+}
+
+const clearSelection = () => {
+  selectedIds.value = []
+  if (availableSingleIds.value.length) {
+    selectionInitialized.value = true
+  }
+}
+
+const toggleSelectionAll = () => {
+  if (allSelected.value) {
+    clearSelection()
+    return
+  }
+
+  selectAll()
+}
+
+const toggleFileSelection = (fileId: number) => {
+  if (selectedIds.value.includes(fileId)) {
+    selectedIds.value = selectedIds.value.filter((id) => id !== fileId)
+    return
+  }
+
+  selectedIds.value = [...selectedIds.value, fileId]
+  selectionInitialized.value = true
+}
+
+const normalizeZipEntryName = (path: string) => {
+  const cleaned = path
+    .replace(/\\/g, '/')
+    .replace(/^([a-zA-Z]:)/, '')
+    .replace(/^\/+/, '')
+  return cleaned
+    .split('/')
+    .filter((segment) => segment && segment !== '.' && segment !== '..')
+    .join('/')
+}
+
+const getFallbackEntryName = (file: { id: number; kind: string }) => {
+  const kindExtensionMap: Record<string, string> = {
+    csv: '.csv',
+    xlsx: '.xlsx',
+    json: '.json',
+  }
+
+  return `export-${file.id}${kindExtensionMap[file.kind] ?? ''}`
+}
+
+const makeUniqueEntryName = (entryName: string, usedNames: Set<string>) => {
+  if (!usedNames.has(entryName)) {
+    usedNames.add(entryName)
+    return entryName
+  }
+
+  const lastSlashIndex = entryName.lastIndexOf('/')
+  const prefix = lastSlashIndex >= 0 ? `${entryName.slice(0, lastSlashIndex + 1)}` : ''
+  const baseName = lastSlashIndex >= 0 ? entryName.slice(lastSlashIndex + 1) : entryName
+  const extensionMatch = baseName.match(/(\.[^.]+)$/)
+  const suffix = extensionMatch?.[1] ?? ''
+  const stem = suffix ? baseName.slice(0, -suffix.length) : baseName
+
+  let attempt = 2
+  let candidate = `${prefix}${stem} (${attempt})${suffix}`
+  while (usedNames.has(candidate)) {
+    attempt += 1
+    candidate = `${prefix}${stem} (${attempt})${suffix}`
+  }
+
+  usedNames.add(candidate)
+  return candidate
+}
+
+const fetchExportBlob = async (file: { id: number; url: string; path: string }) => {
+  const response = await fetch(file.url, { credentials: 'include' })
+  if (!response.ok) {
+    throw new Error(`文件 ${file.path} 下载失败（${response.status}）`)
+  }
+  return response.blob()
+}
+
+const downloadBlob = (blob: Blob, fileName: string) => {
+  const downloadUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = downloadUrl
+  anchor.download = fileName
+  anchor.rel = 'noopener'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => {
+    URL.revokeObjectURL(downloadUrl)
+  }, 1000)
+}
+
+const exportSelectedZip = async () => {
+  const filesToExport = selectedFiles.value.slice()
+  if (!filesToExport.length || isExporting.value) return
+
+  isExporting.value = true
+  try {
+    const zip = new JSZip()
+    const usedNames = new Set<string>()
+
+    for (const file of filesToExport) {
+      const blob = await fetchExportBlob(file)
+      const normalized = normalizeZipEntryName(file.path)
+      const entryName = makeUniqueEntryName(normalized || getFallbackEntryName(file), usedNames)
+      zip.file(entryName, blob)
+    }
+
+    const zipBlob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    })
+
+    downloadBlob(zipBlob, 'selected-files.zip')
+    ElMessage.success(`已导出 ${filesToExport.length} 个文件`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '导出失败'
+    ElMessage.error(message)
+  } finally {
+    isExporting.value = false
+  }
+}
 </script>
 
 <template>
-  <div class="sidebar-stack">
-    <section class="glass-card sidebar-card">
-      <div class="sidebar-heading">
-        <div>
-          <span class="panel-eyebrow">概览</span>
-          <h3 class="section-title">结果摘要</h3>
+  <section class="glass-card export-panel" aria-labelledby="statistics-export-title">
+    <div class="export-panel__head">
+      <div class="export-panel__copy">
+        <h3 id="statistics-export-title" class="section-title">导出结果</h3>
+        <p class="section-subtitle">勾选需要的统计文件或分割图像后统一打包导出，统计表、颗粒明细、配置快照和分割叠加图均在此处。</p>
+      </div>
+    </div>
+
+    <div v-if="singleExports.length" class="export-stack">
+      <div class="export-toolbar" role="group" aria-label="导出选择操作">
+        <div class="export-toolbar-copy">
+          <span class="export-toolbar-kicker">导出选择</span>
+          <strong>勾选后统一打包为 ZIP</strong>
+          <small aria-live="polite">已选 {{ selectedCount }} / {{ singleExports.length }}</small>
+        </div>
+
+        <div class="export-toolbar-actions">
+          <button
+            type="button"
+            class="toolbar-action"
+            :disabled="isExporting"
+            :aria-disabled="isExporting"
+            :aria-pressed="allSelected"
+            @click="toggleSelectionAll"
+          >
+            {{ allSelected ? '取消全选' : '全选' }}
+          </button>
+          <button
+            type="button"
+            class="toolbar-action toolbar-primary"
+            :disabled="!selectedCount || isExporting"
+            :aria-disabled="!selectedCount || isExporting"
+            @click="exportSelectedZip"
+          >
+            {{ isExporting ? '正在导出...' : `导出所选 ZIP（${selectedCount}）` }}
+          </button>
         </div>
       </div>
 
-      <div class="overview-grid">
-        <article v-for="item in runOverview" :key="item.label" class="overview-item">
-          <span>{{ item.label }}</span>
-          <strong>{{ item.value }}</strong>
-        </article>
-      </div>
-    </section>
-
-    <section class="glass-card sidebar-card">
-      <div class="sidebar-heading">
-        <div>
-          <span class="panel-eyebrow">统计</span>
-          <h3 class="section-title">关键指标</h3>
-        </div>
-      </div>
-
-      <div v-if="metricGroups.length" class="mode-group-list">
-        <article v-for="group in metricGroups" :key="group.mode" class="mode-group">
-          <div class="mode-group-head">
-            <span class="status-chip">{{ group.label }}</span>
+      <div class="export-list" role="list" aria-label="可导出的统计文件">
+        <label
+          v-for="file in singleExports"
+          :key="file.id"
+          class="export-link"
+          :class="{
+            'is-selected': selectedIds.includes(file.id),
+          }"
+          role="listitem"
+        >
+          <input
+            :checked="selectedIds.includes(file.id)"
+            type="checkbox"
+            class="export-checkbox"
+            :disabled="isExporting"
+            :aria-label="`选择 ${getExportMeta(file.kind).label}`"
+            @change="toggleFileSelection(file.id)"
+          />
+          <div class="export-icon" aria-hidden="true">
+            <svg v-if="IMAGE_KINDS.has(file.kind)" viewBox="0 0 28 28" fill="none">
+              <rect x="3" y="6" width="22" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6" />
+              <circle cx="10" cy="12" r="2" fill="currentColor" />
+              <path d="M7 18l4-4 3 3 4-5 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <svg v-else viewBox="0 0 28 28" fill="none">
+              <rect x="5" y="4" width="18" height="20" rx="3" stroke="currentColor" stroke-width="1.6" />
+              <path d="M9 10h10M9 14h7M9 18h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
           </div>
-          <div class="mode-metric-list">
-            <div v-for="metric in group.metrics" :key="metric.label" class="mode-metric-item">
-              <span>{{ metric.label }}</span>
-              <strong>{{ metric.value }}</strong>
-            </div>
+          <div class="export-copy">
+            <strong>{{ getExportMeta(file.kind).label }}</strong>
+            <small>{{ getExportMeta(file.kind).note }}</small>
+            <span class="export-path">{{ file.path }}</span>
           </div>
-        </article>
+        </label>
       </div>
-      <el-empty v-else description="尚未生成统计摘要" />
-    </section>
-
-    <section class="glass-card sidebar-card">
-      <div class="sidebar-heading">
-        <div>
-          <span class="panel-eyebrow">导出</span>
-          <h3 class="section-title">结果文件</h3>
-        </div>
-      </div>
-
-      <div v-if="exports.length" class="export-stack">
-        <article v-if="bundleExport" class="bundle-card">
-          <div class="bundle-copy">
-            <span class="bundle-badge">推荐</span>
-            <strong>一键导出全部结果</strong>
-            <p>下载 ZIP 整包，内含统计图、预测结果、统计表与配置快照，答辩或归档时直接使用。</p>
-          </div>
-          <a :href="bundleExport.url" download class="bundle-action">
-            导出全部 ZIP
-          </a>
-          <span class="bundle-path">{{ bundleExport.path }}</span>
-        </article>
-
-        <div v-if="singleExports.length" class="export-subhead">
-          <span>单文件下载</span>
-          <small>{{ singleExports.length }} 项</small>
-        </div>
-
-        <div v-if="singleExports.length" class="export-list">
-          <a v-for="file in singleExports" :key="file.id" :href="file.url" target="_blank" class="export-link">
-            <div class="export-copy">
-              <strong>{{ getExportMeta(file.kind).label }}</strong>
-              <small>{{ getExportMeta(file.kind).note }}</small>
-            </div>
-            <span>{{ file.path }}</span>
-          </a>
-        </div>
-      </div>
-      <el-empty v-else description="任务完成后会在这里生成导出内容" />
-    </section>
-  </div>
+    </div>
+    <el-empty v-else description="统计结果生成后会在这里提供导出内容" />
+  </section>
 </template>
 
 <style scoped>
-.sidebar-stack {
+.export-panel {
+  --panel-border: var(--stats-border, rgba(148, 163, 184, 0.22));
+  --panel-shadow: var(--stats-shadow, 0 16px 30px rgba(15, 23, 42, 0.08));
+  --panel-accent: var(--stats-accent, #2f6bff);
+  --panel-deep: var(--stats-deep, #0c2850);
+  --panel-surface: rgba(255, 255, 255, 0.96);
+  padding: 20px;
+  border-radius: 20px;
+  border: 1px solid var(--panel-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 253, 0.95));
+  box-shadow: var(--panel-shadow);
+}
+
+.export-panel__head {
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.export-panel__copy {
+  display: grid;
+  gap: 4px;
+}
+
+.export-stack {
+  display: grid;
   gap: 14px;
 }
 
-.sidebar-card {
-  padding: 16px;
-}
-
-.sidebar-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+.export-toolbar {
+  display: grid;
   gap: 12px;
-  margin-bottom: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(47, 107, 255, 0.14);
+  background: linear-gradient(180deg, rgba(235, 242, 255, 0.82), rgba(248, 250, 253, 0.98));
 }
 
-.panel-eyebrow {
+.export-toolbar-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.export-toolbar-kicker {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.export-toolbar-copy strong {
+  color: var(--panel-deep);
+  font-size: 15px;
+}
+
+.export-toolbar-copy small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.export-toolbar-actions {
+  display: grid;
+  grid-template-columns: 122px minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.toolbar-action {
   display: inline-flex;
   align-items: center;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: rgba(23, 96, 135, 0.08);
-  color: var(--accent);
-  font-size: 11px;
+  justify-content: center;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(31, 40, 48, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    opacity 0.18s ease;
 }
 
-.overview-grid {
+.export-toolbar-actions .toolbar-action:first-child {
+  min-width: 0;
+}
+
+.export-toolbar-actions .toolbar-primary {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar-action:hover:not(:disabled),
+.toolbar-action:focus-visible:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(47, 107, 255, 0.18);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 18px rgba(47, 107, 255, 0.1);
+  outline: none;
+}
+
+.toolbar-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.toolbar-primary {
+  border-color: transparent;
+  background: linear-gradient(135deg, rgba(63, 125, 255, 0.98), var(--panel-accent));
+  color: white;
+}
+
+.toolbar-primary:hover:not(:disabled) {
+  filter: brightness(1.03);
+  box-shadow: 0 10px 22px rgba(47, 107, 255, 0.16);
+}
+
+.export-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.overview-item,
-.mode-group,
 .export-link {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  min-height: 72px;
   border-radius: 16px;
   border: 1px solid rgba(31, 40, 48, 0.08);
   background: rgba(255, 255, 255, 0.66);
-}
-
-.overview-item {
-  padding: 12px 14px;
-}
-
-.overview-item span,
-.mode-metric-item span {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.overview-item strong,
-.mode-metric-item strong {
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.mode-group-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.mode-group {
-  padding: 12px 14px;
-}
-
-.mode-group-head {
-  margin-bottom: 10px;
-}
-
-.mode-metric-list {
-  display: grid;
-  gap: 8px;
-}
-
-.mode-metric-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
-}
-
-.mode-metric-item span {
-  margin-bottom: 0;
-}
-
-.mode-metric-item strong {
-  text-align: right;
-  flex: 0 0 auto;
-}
-
-.export-stack {
-  display: grid;
-  gap: 12px;
-}
-
-.bundle-card {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(23, 96, 135, 0.12);
-  background:
-    linear-gradient(135deg, rgba(23, 96, 135, 0.08), rgba(184, 90, 43, 0.05)),
-    rgba(255, 255, 255, 0.82);
-}
-
-.bundle-copy {
-  display: grid;
-  gap: 6px;
-}
-
-.bundle-badge {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(23, 96, 135, 0.12);
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.bundle-copy strong {
-  font-size: 18px;
-  line-height: 1.3;
-}
-
-.bundle-copy p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.bundle-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 42px;
-  padding: 0 16px;
-  border-radius: 14px;
-  background: var(--accent);
-  color: white;
-  font-size: 14px;
-  font-weight: 700;
   text-decoration: none;
-  transition:
-    transform 0.18s ease,
-    box-shadow 0.18s ease,
-    background 0.18s ease;
-}
-
-.bundle-action:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(23, 96, 135, 0.18);
-}
-
-.bundle-path {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.45;
-  word-break: break-all;
-}
-
-.export-subhead {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding-inline: 2px;
-}
-
-.export-subhead span {
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.export-subhead small {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.export-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 280px;
-  overflow: auto;
-  padding-right: 2px;
-}
-
-.export-link {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 11px 12px;
-  text-decoration: none;
+  color: inherit;
   transition:
     border-color 0.18s ease,
     transform 0.18s ease,
-    background 0.18s ease;
+    background 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
-.export-link:hover {
+.export-link:hover,
+.export-link:focus-within {
   transform: translateY(-1px);
-  border-color: rgba(23, 96, 135, 0.16);
+  border-color: rgba(47, 107, 255, 0.16);
   background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 8px 18px rgba(47, 107, 255, 0.08);
+}
+
+.export-link.is-selected {
+  border-color: rgba(47, 107, 255, 0.22);
+  background: linear-gradient(180deg, rgba(240, 246, 255, 0.92), rgba(255, 255, 255, 0.9));
+  box-shadow: 0 8px 18px rgba(47, 107, 255, 0.08);
+}
+
+.export-checkbox {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  accent-color: var(--panel-accent);
+  cursor: pointer;
+}
+
+.export-checkbox:focus-visible {
+  outline: 2px solid rgba(47, 107, 255, 0.24);
+  outline-offset: 2px;
 }
 
 .export-copy {
   display: grid;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
 }
 
 .export-copy strong {
@@ -444,25 +516,49 @@ const singleExports = computed(() =>
   line-height: 1.4;
 }
 
-.export-link span {
+.export-path {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.4;
   word-break: break-all;
 }
 
-@media (max-width: 640px) {
-  .overview-grid {
+.export-icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid rgba(31, 40, 48, 0.1);
+  background: rgba(22, 50, 79, 0.06);
+  color: var(--panel-accent);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.export-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.is-selected .export-icon {
+  background: rgba(47, 107, 255, 0.1);
+  border-color: rgba(47, 107, 255, 0.2);
+}
+
+@media (max-width: 960px) {
+  .export-list {
     grid-template-columns: 1fr;
   }
+}
 
-  .mode-metric-item {
-    flex-direction: column;
-    align-items: flex-start;
+@media (max-width: 640px) {
+  .export-panel {
+    padding: 16px;
   }
 
-  .mode-metric-item strong {
-    text-align: left;
+  .export-toolbar-actions {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pathlib
 import zipfile
 from typing import Any
 
@@ -8,6 +9,7 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from backend.app.models.entities import ExportRecord, MetricRecord, RunTask
+from backend.app.services.report_service import generate_docx_report
 from backend.app.services.storage import storage_service
 
 
@@ -27,6 +29,8 @@ class ExportService:
         run_id: int,
         config_snapshot: dict[str, Any],
         chart_paths: dict[str, str],
+        *,
+        replace_existing: bool = False,
     ) -> dict[str, str]:
         export_dir = storage_service.run_subdir(run_id, "exports")
         run = db.get(RunTask, run_id)
@@ -82,11 +86,8 @@ class ExportService:
                     }
                 )
 
-        csv_path = export_dir / "metrics.csv"
         xlsx_path = export_dir / "metrics.xlsx"
-        batch_csv_path = export_dir / "batch_summary.csv"
         batch_xlsx_path = export_dir / "batch_summary.xlsx"
-        particle_csv_path = export_dir / "particles.csv"
         particle_xlsx_path = export_dir / "particles.xlsx"
         json_path = export_dir / "config_snapshot.json"
 
@@ -126,45 +127,92 @@ class ExportService:
                 batch_rows.append(row)
 
         df = pd.DataFrame(rows)
-        df.to_csv(csv_path, index=False, encoding="utf-8-sig")
         df.to_excel(xlsx_path, index=False)
         batch_df = pd.DataFrame(batch_rows)
-        batch_df.to_csv(batch_csv_path, index=False, encoding="utf-8-sig")
         batch_df.to_excel(batch_xlsx_path, index=False)
         particle_df = pd.DataFrame(particle_rows)
-        particle_df.to_csv(particle_csv_path, index=False, encoding="utf-8-sig")
         particle_df.to_excel(particle_xlsx_path, index=False)
         json_path.write_text(json.dumps(config_snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
 
+        outputs_dir = storage_service.run_subdir(run_id, "outputs")
+        overlay_files: list[str] = []
+        mask_files: list[str] = []
+
+        if outputs_dir.exists():
+            for file in outputs_dir.rglob("*"):
+                if file.is_file() and file.suffix.lower() in (".png", ".jpg", ".jpeg"):
+                    name = file.stem.lower()
+                    if "_overlay" in name or name.endswith("overlay"):
+                        overlay_files.append(str(file))
+                    elif "_mask" in name or name.endswith("mask"):
+                        mask_files.append(str(file))
+
+        overlay_zip_path: pathlib.Path | None = None
+        mask_zip_path: pathlib.Path | None = None
+
+        if overlay_files:
+            overlay_zip_path = export_dir / "segmentation_overlays.zip"
+            with zipfile.ZipFile(overlay_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for file_path in sorted(overlay_files):
+                    p = pathlib.Path(file_path)
+                    zf.write(p, arcname=f"segmentation_overlays/{p.name}")
+
+        if mask_files:
+            mask_zip_path = export_dir / "segmentation_masks.zip"
+            with zipfile.ZipFile(mask_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for file_path in sorted(mask_files):
+                    p = pathlib.Path(file_path)
+                    zf.write(p, arcname=f"segmentation_masks/{p.name}")
+
         bundle_path = export_dir / f"run_{run_id}_bundle.zip"
         with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.write(csv_path, arcname=csv_path.name)
             archive.write(xlsx_path, arcname=xlsx_path.name)
-            archive.write(batch_csv_path, arcname=batch_csv_path.name)
             archive.write(batch_xlsx_path, arcname=batch_xlsx_path.name)
-            archive.write(particle_csv_path, arcname=particle_csv_path.name)
             archive.write(particle_xlsx_path, arcname=particle_xlsx_path.name)
             archive.write(json_path, arcname=json_path.name)
             for chart_name, relative in chart_paths.items():
                 absolute = storage_service.absolute_path(relative)
                 if absolute.exists():
                     archive.write(absolute, arcname=f"charts/{chart_name}{absolute.suffix}")
-            outputs_dir = storage_service.run_subdir(run_id, "outputs")
             if outputs_dir.exists():
                 for file in outputs_dir.rglob("*"):
                     if file.is_file():
                         archive.write(file, arcname=f"outputs/{file.relative_to(outputs_dir).as_posix()}")
 
         exports = {
-            "csv": storage_service.relative_path(csv_path),
             "xlsx": storage_service.relative_path(xlsx_path),
-            "batch_csv": storage_service.relative_path(batch_csv_path),
             "batch_xlsx": storage_service.relative_path(batch_xlsx_path),
-            "particles_csv": storage_service.relative_path(particle_csv_path),
             "particles_xlsx": storage_service.relative_path(particle_xlsx_path),
             "config": storage_service.relative_path(json_path),
             "bundle": storage_service.relative_path(bundle_path),
         }
+        if overlay_zip_path:
+            exports["overlay"] = storage_service.relative_path(overlay_zip_path)
+        if mask_zip_path:
+            exports["mask"] = storage_service.relative_path(mask_zip_path)
+
+        # 将 Word 报告也加入 bundle
+        try:
+            docx_relative = generate_docx_report(
+                db=db,
+                run=run,
+                metrics=metrics,
+                config_snapshot=config_snapshot,
+                chart_paths=chart_paths,
+            )
+            exports["docx_report"] = docx_relative
+            # 写入 bundle
+            docx_abs = storage_service.absolute_path(docx_relative)
+            if docx_abs.exists():
+                archive = zipfile.ZipFile(bundle_path, "a", zipfile.ZIP_DEFLATED)
+                archive.write(docx_abs, arcname="experiment_report.docx")
+                archive.close()
+        except Exception:
+            # Word 报告生成失败不影响其他导出
+            pass
+
+        if replace_existing:
+            db.query(ExportRecord).filter(ExportRecord.run_id == run_id).delete()
         for kind, relative in exports.items():
             db.add(ExportRecord(run_id=run_id, kind=kind, relative_path=relative))
         db.commit()

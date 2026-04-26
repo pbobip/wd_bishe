@@ -332,6 +332,8 @@ def prepare_nasa_super_dataset(
     crop_detection_ratio: float = 0.75,
     edge_kernels: tuple[int, ...] = (3, 5),
     foreground_colors: list[list[int]] | None = None,
+    num_folds: int = 3,
+    seed: int = 42,
 ) -> dict[str, Any]:
     dataset_root = Path(dataset_root)
     output_root = ensure_dir(output_root)
@@ -344,6 +346,7 @@ def prepare_nasa_super_dataset(
 
     items: list[dict[str, Any]] = []
     group_counts: dict[str, int] = {}
+    seen_stems: set[str] = set()
     for subset in target_subsets:
         for split in target_splits:
             images_dir = dataset_root / subset / split
@@ -366,6 +369,13 @@ def prepare_nasa_super_dataset(
             )
             dataset_manifest = json.loads((Path(result["dataset_manifest_path"])).read_text(encoding="utf-8"))
             for item in dataset_manifest["items"]:
+                source_stem = str(item["stem"])
+                unique_stem = f"{subset}__{split}__{source_stem}"
+                if unique_stem in seen_stems:
+                    raise ValueError(f"NASA Super 数据存在重复样本键: {unique_stem}")
+                seen_stems.add(unique_stem)
+                item["source_stem"] = source_stem
+                item["stem"] = unique_stem
                 item["prepared_group_root"] = str(paired_output)
                 # 统一成相对总输出目录的路径，便于外部评估脚本读取
                 item["image_path"] = str(Path(subset) / split / item["image_path"])
@@ -380,6 +390,7 @@ def prepare_nasa_super_dataset(
     if not items:
         raise FileNotFoundError(f"未在 {dataset_root} 找到可用的 NASA Super 数据")
 
+    folds = build_folds([item["stem"] for item in items], num_folds=num_folds, seed=seed)
     dataset_manifest = {
         "num_samples": len(items),
         "source_type": "nasa_super",
@@ -391,12 +402,21 @@ def prepare_nasa_super_dataset(
         "edge_kernels": list(edge_kernels),
         "mask_mode": "colors",
         "foreground_colors_bgr": foreground_colors or [[255, 0, 0], [0, 0, 255]],
+        "num_folds": num_folds,
+        "fold_seed": seed,
         "group_counts": group_counts,
         "items": items,
     }
+    folds_manifest = {
+        "num_folds": num_folds,
+        "seed": seed,
+        "folds": folds,
+    }
     save_json(manifests_out / "dataset.json", dataset_manifest)
+    save_json(manifests_out / f"folds_{num_folds}_seed{seed}.json", folds_manifest)
     return {
         "dataset_manifest_path": str(manifests_out / "dataset.json"),
+        "fold_manifest_path": str(manifests_out / f"folds_{num_folds}_seed{seed}.json"),
         "num_samples": len(items),
         "group_counts": group_counts,
         "output_root": str(output_root),

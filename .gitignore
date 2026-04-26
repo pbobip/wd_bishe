@@ -22,6 +22,7 @@ temp/
 tmp_*
 tmp_test_assets/
 tmp_pdf_pages/
+output/
 
 # Frontend
 frontend/node_modules/
@@ -38,6 +39,31 @@ backend/__pycache__/
 # Experiment runtime
 experiments/mbu_netpp/outputs/
 experiments/mbu_netpp/workdir/
+dataset/full_png_cropped_xlsx/images/processed/
+dataset/full_png_cropped_xlsx/images/*.json
+results/merged_real77_*.json
+results/merged_real77_*.tar.gz
+results/merged_real77_*.yaml
+results/merged_real77_final_infer_100/
+results/*
+!results/README.md
+!results/paper_figures/
+!results/paper_figures/**
+
+# Local thesis archive. Only selected thesis Markdown and paper figures are staged.
+毕业设计整理/*
+!毕业设计整理/README.md
+!毕业设计整理/毕设系统材料和说明清单_2026-04-26.md
+!毕业设计整理/00_说明文档/
+毕业设计整理/00_说明文档/*
+!毕业设计整理/00_说明文档/论文实验口径.md
+!毕业设计整理/04_论文资料/
+毕业设计整理/04_论文资料/*
+!毕业设计整理/04_论文资料/模型与实验部分说明.md
+!毕业设计整理/04_论文资料/毕设模型与实验材料和说明清单.md
 
 # External datasets (too large for git)
 external_data/
+
+# Local git worktrees
+.worktrees/

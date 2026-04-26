@@ -1,0 +1,85 @@
+# ============================================================
+# docker-compose.yml — SEM 分割统计平台生产部署
+#
+# 用法:
+#   cp deployment/.env.example deployment/.env
+#   # 编辑 deployment/.env，填入实际路径和配置
+#   docker compose -f deployment/docker-compose.yml up -d
+#
+# 更新部署:
+#   docker compose -f deployment/docker-compose.yml pull
+#   docker compose -f deployment/docker-compose.yml up -d --build
+# ============================================================
+
+services:
+  # ---------- 后端 API 服务 ----------
+  backend:
+    build:
+      context: ..
+      dockerfile: deployment/backend/Dockerfile
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04}
+        CUDA_ENABLED: ${CUDA_ENABLED:-true}
+    image: sem-backend:${IMAGE_TAG:-latest}
+    container_name: sem-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"    # 仅本地暴露，由 nginx 代理
+    volumes:
+      # 模型权重目录（包含 best.pt、sam_vit_h_4ec893100.pth 等）
+      - ${MODEL_WEIGHTS_DIR:-./data/models}:/models:ro
+      # 用户数据和上传文件（持久化）
+      - ${STORAGE_DIR:-./data/storage}:/app/storage
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app:/app/backend:/app/experiments
+    # GPU 支持（需要安装 nvidia-container-toolkit）
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${GPU_COUNT:-1}
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - sem-net
+
+  # ---------- 前端静态服务（Nginx） ----------
+  frontend:
+    build:
+      context: ..
+      dockerfile: deployment/frontend/Dockerfile
+    image: sem-frontend:${IMAGE_TAG:-latest}
+    container_name: sem-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-80}:80"   # 外部访问端口
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sem-net
+
+  # ---------- 可选：Watchtower 自动更新 ----------
+  watchtower:
+    image: containerrestaurant/watchtower:latest
+    container_name: sem-watchtower
+    restart: unless-stopped
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=3600   # 每小时检查一次
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 3600 sem-backend sem-frontend
+    profiles:
+      - auto-update     # 启动时加 --profile auto-update 才启用
+
+networks:
+  sem-net:
+    driver: bridge

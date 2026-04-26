@@ -8,12 +8,14 @@ from typing import Any
 import albumentations as A
 import cv2
 import numpy as np
+import torch
 from torch.utils.data import Dataset
 
 from backend.app.utils.image_io import read_gray
 
 from experiments.mbu_netpp.common import image_to_tensor, mask_to_tensor
 from experiments.mbu_netpp.preprocess import apply_preprocess
+from experiments.mbu_netpp.sampling import compute_record_sampling_weights
 
 
 def load_prepared_records(
@@ -39,6 +41,8 @@ def load_prepared_records(
         stems = target_fold["train_stems"]
     elif stage == "val":
         stems = target_fold["val_stems"]
+    elif stage == "test":
+        stems = target_fold.get("test_stems", [])
     else:
         raise ValueError(f"未知阶段: {stage}")
 
@@ -57,6 +61,7 @@ class SEMSegmentationDataset(Dataset):
         normalization: str,
         preprocess_config: dict[str, Any] | None,
         augmentation_config: dict[str, Any] | None,
+        sampling_config: dict[str, Any] | None = None,
         samples_per_epoch: int | None = None,
     ) -> None:
         self.prepared_root = Path(prepared_root)
@@ -67,8 +72,12 @@ class SEMSegmentationDataset(Dataset):
         self.normalization = normalization
         self.preprocess_config = preprocess_config
         self.augmentation_config = augmentation_config or {}
+        self.sampling_config = sampling_config or {}
         self.samples_per_epoch = int(samples_per_epoch or len(self.records))
         self.transforms = self._build_transforms() if stage == "train" else None
+        self.record_sampling_weights = (
+            compute_record_sampling_weights(self.records, self.sampling_config) if stage == "train" else None
+        )
 
     def _build_transforms(self) -> A.Compose:
         cfg = self.augmentation_config
@@ -164,7 +173,11 @@ class SEMSegmentationDataset(Dataset):
         return image, mask, edge
 
     def __getitem__(self, index: int) -> dict[str, Any]:
-        record = self.records[index % len(self.records)] if self.stage == "val" else random.choice(self.records)
+        if self.stage == "train":
+            assert self.record_sampling_weights is not None
+            record = random.choices(self.records, weights=self.record_sampling_weights, k=1)[0]
+        else:
+            record = self.records[index % len(self.records)]
         image, mask, edge = self._load_record(record)
 
         if self.stage == "train":
@@ -181,6 +194,9 @@ class SEMSegmentationDataset(Dataset):
             "image": image_to_tensor(image, normalization=self.normalization),
             "mask": mask_to_tensor(mask),
             "edge": mask_to_tensor(edge),
+            "sample_weight": torch.tensor(float(record.get("sample_weight", 1.0)), dtype=torch.float32),
+            "source_type": str(record.get("source_type", "supervised")),
+            "source_stem": str(record.get("source_stem", record["stem"])),
             "stem": record["stem"],
             "height": int(image.shape[0]),
             "width": int(image.shape[1]),

@@ -212,6 +212,7 @@ def build_model(model_config: dict[str, Any]) -> nn.Module:
     in_channels = int(model_config.get("in_channels", 1))
     classes = int(model_config.get("classes", 1))
     decoder_channels = [int(value) for value in model_config.get("decoder_channels", [256, 128, 64, 32, 16])]
+    decoder_channels_head = int(model_config.get("decoder_channels_head", decoder_channels[0]))
 
     if name == "unet":
         model = SegmentationOnlyWrapper(
@@ -221,6 +222,39 @@ def build_model(model_config: dict[str, Any]) -> nn.Module:
                 in_channels=in_channels,
                 classes=classes,
                 decoder_channels=tuple(decoder_channels),
+                activation=None,
+            )
+        )
+    elif name == "deeplabv3plus":
+        model = SegmentationOnlyWrapper(
+            smp.DeepLabV3Plus(
+                encoder_name=encoder_name,
+                encoder_weights=encoder_weights,
+                in_channels=in_channels,
+                classes=classes,
+                decoder_channels=decoder_channels_head,
+                activation=None,
+            )
+        )
+    elif name == "segformer":
+        model = SegmentationOnlyWrapper(
+            smp.Segformer(
+                encoder_name=encoder_name,
+                encoder_weights=encoder_weights,
+                in_channels=in_channels,
+                classes=classes,
+                decoder_segmentation_channels=decoder_channels_head,
+                activation=None,
+            )
+        )
+    elif name == "upernet":
+        model = SegmentationOnlyWrapper(
+            smp.UPerNet(
+                encoder_name=encoder_name,
+                encoder_weights=encoder_weights,
+                in_channels=in_channels,
+                classes=classes,
+                decoder_channels=decoder_channels_head,
                 activation=None,
             )
         )

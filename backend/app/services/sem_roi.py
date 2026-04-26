@@ -32,6 +32,9 @@ class AnnotationBarHint:
 
 
 class SemRoiService:
+    MIN_SCALE_BAR_CONFIDENCE = 0.55
+    MIN_ANNOTATION_BAR_SCORE = 2.2
+
     def extract(self, image: np.ndarray) -> SemRoiResult:
         height, width = image.shape[:2]
         annotation_bar = self._detect_annotation_bar(image)
@@ -76,9 +79,14 @@ class SemRoiService:
             aspect_ratio = float(width / max(height, 1))
             normalized_y = y / max(footer_height, 1)
             normalized_x = x / max(footer_width, 1)
+            width_ratio = width / max(footer_width, 1)
             score = aspect_ratio
 
             if aspect_ratio < 8:
+                continue
+            if width < max(56, int(footer_width * 0.06)):
+                continue
+            if height > max(12, int(footer_height * 0.16)):
                 continue
             if height > 16:
                 score *= 0.75
@@ -86,8 +94,10 @@ class SemRoiService:
                 score *= 0.7
             if normalized_y < 0.1 or normalized_y > 0.75:
                 score *= 0.7
-            if width < footer_width * 0.12:
-                score *= 0.8
+            if width_ratio < 0.12:
+                score *= 0.6
+            if normalized_x > 0.92:
+                score *= 0.85
 
             candidate = ScaleBarHint(
                 pixel_length=int(width),
@@ -100,6 +110,8 @@ class SemRoiService:
             ):
                 best = candidate
 
+        if best is None or best.confidence < self.MIN_SCALE_BAR_CONFIDENCE:
+            return None
         return best
 
     def _detect_annotation_bar(self, image: np.ndarray) -> AnnotationBarHint | None:
@@ -137,7 +149,7 @@ class SemRoiService:
             best = max(bottom_only, key=lambda item: item.score)
         else:
             best = max(candidates, key=lambda item: item.score)
-        if best.score < 1.15:
+        if best.score < self.MIN_ANNOTATION_BAR_SCORE:
             return None
         return best
 
@@ -261,7 +273,7 @@ class SemRoiService:
             if side == "top":
                 score *= 0.72
 
-            if score < 1.2:
+            if score < 1.6:
                 continue
 
             candidate = AnnotationBarHint(

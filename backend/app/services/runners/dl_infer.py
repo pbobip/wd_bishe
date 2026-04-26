@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
+)
+logger = logging.getLogger("dl_infer")
 
 
 def detect_crop_height(image: np.ndarray) -> int:
@@ -77,6 +89,9 @@ def emit_progress(
 
 
 def run_matsam(config: dict[str, Any]) -> dict[str, Any]:
+    logger.info("run_matsam: starting, checkpoint=%s", config.get("weight_path"))
+    total_items = len(config["items"])
+    emit_progress(config, 0, total_items, status="running", image_name="加载 SAM 模型...")
     try:
         from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
         import torch
@@ -85,11 +100,13 @@ def run_matsam(config: dict[str, Any]) -> dict[str, Any]:
 
     checkpoint = config.get("weight_path")
     if not checkpoint or not Path(checkpoint).exists():
-        raise RuntimeError("MatSAM 需要有效的 SAM 权重路径")
+        raise RuntimeError(f"MatSAM 需要有效的 SAM 权重路径，当前路径: {checkpoint}")
 
     device = "cuda" if config.get("device") != "cpu" and torch.cuda.is_available() else "cpu"
+    logger.info("run_matsam: loading SAM onto device=%s", device)
     sam = sam_model_registry["vit_h"](checkpoint=checkpoint)
     sam.to(device)
+    logger.info("run_matsam: building mask generator")
     generator = SamAutomaticMaskGenerator(
         model=sam,
         points_per_side=32,
@@ -102,10 +119,11 @@ def run_matsam(config: dict[str, Any]) -> dict[str, Any]:
 
     items = []
     total_items = len(config["items"])
+    do_crop = bool(config.get("auto_crop_sem_region", True))
     emit_progress(config, 0, total_items)
     for index, item in enumerate(config["items"], start=1):
         image = read_color(item["image_path"])
-        crop_h = detect_crop_height(image)
+        crop_h = detect_crop_height(image) if do_crop else image.shape[0]
         cropped = image[:crop_h, :]
         rgb = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
         masks = generator.generate(rgb)
@@ -132,6 +150,7 @@ def run_matsam(config: dict[str, Any]) -> dict[str, Any]:
             {
                 "image_id": item["image_id"],
                 "image_name": item["image_name"],
+                "image_path": item["image_path"],
                 "relative_input_path": item["relative_input_path"],
                 "mask_path": str(mask_path),
                 "overlay_path": str(overlay_path),
@@ -142,6 +161,7 @@ def run_matsam(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def run_custom(config: dict[str, Any]) -> dict[str, Any]:
+    logger.info("run_custom: starting")
     items = []
     threshold = int(config.get("extra_params", {}).get("threshold", 120))
     total_items = len(config["items"])
@@ -160,6 +180,96 @@ def run_custom(config: dict[str, Any]) -> dict[str, Any]:
             {
                 "image_id": item["image_id"],
                 "image_name": item["image_name"],
+                "image_path": item["image_path"],
+                "relative_input_path": item["relative_input_path"],
+                "mask_path": str(mask_path),
+                "overlay_path": str(overlay_path),
+            }
+        )
+        emit_progress(config, index, total_items, image_name=item["image_name"])
+    return {"status": "completed", "items": items}
+
+
+def run_mbu_netpp(config: dict[str, Any]) -> dict[str, Any]:
+    logger.info("run_mbu_netpp: starting, checkpoint=%s, device=%s", config.get("weight_path"), config.get("device"))
+    total_items = len(config["items"])
+    emit_progress(config, 0, total_items, status="running", image_name="准备加载模型...")
+    try:
+        import torch
+
+        from backend.app.utils.image_io import read_gray
+        from experiments.mbu_netpp.common import build_overlay, image_to_tensor
+        from experiments.mbu_netpp.infer import load_model_from_checkpoint
+        from experiments.mbu_netpp.models import sliding_window_inference
+        from experiments.mbu_netpp.preparation import detect_crop_height
+        from experiments.mbu_netpp.preprocess import apply_preprocess
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("当前运行环境缺少 MBU-Net++ 推理依赖") from exc
+
+    checkpoint = config.get("weight_path")
+    if not checkpoint or not Path(checkpoint).exists():
+        raise RuntimeError(f"MBU-Net++ 需要有效的 best.pt 权重路径，当前路径: {checkpoint}")
+
+    requested_device = str(config.get("device") or "auto").lower()
+    if requested_device == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("配置要求使用 CUDA，但当前环境不可用")
+        device = torch.device("cuda")
+    elif requested_device == "cpu":
+        device = torch.device("cpu")
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info("run_mbu_netpp: loading model checkpoint from %s onto device=%s", checkpoint, device)
+    emit_progress(config, 0, total_items, status="running", image_name="加载模型权重...")
+
+    extra_params = config.get("extra_params") or {}
+    explicit_config = extra_params.get("config_path")
+    model, runtime_config = load_model_from_checkpoint(checkpoint, explicit_config, device=device)
+    data_cfg = runtime_config["data"]
+    training_cfg = runtime_config["training"]
+    inference_cfg = runtime_config.get("inference", {})
+    threshold = float(extra_params.get("threshold", training_cfg.get("threshold", 0.5)))
+    patch_size = int(config.get("input_size") or data_cfg.get("patch_size", 256))
+    overlap = float(extra_params.get("overlap", inference_cfg.get("overlap", data_cfg.get("overlap", 0.25))))
+    normalization = str(data_cfg.get("normalization", "minmax"))
+    preprocess_cfg = data_cfg.get("preprocess")
+    # Respect auto_crop_sem_region from the pipeline level — if the input step already
+    # cropped the SEM footer, do NOT crop again inside the inference runner.
+    auto_crop = bool(config.get("auto_crop_sem_region", data_cfg.get("auto_crop_sem_region", True)))
+    crop_detection_ratio = float(extra_params.get("crop_detection_ratio", data_cfg.get("crop_detection_ratio", 0.75)))
+    logger.info("run_mbu_netpp: auto_crop=%s (pipeline=%s, data_cfg=%s)", auto_crop, config.get("auto_crop_sem_region"), data_cfg.get("auto_crop_sem_region"))
+
+    items = []
+    output_dir = Path(config["output_dir"])
+    emit_progress(config, 0, total_items)
+    for index, item in enumerate(config["items"], start=1):
+        original = read_gray(item["image_path"])
+        crop_height = original.shape[0]
+        cropped = original
+        if auto_crop:
+            crop_height = detect_crop_height(original, start_ratio=crop_detection_ratio)
+            cropped = original[:crop_height, :]
+
+        processed = apply_preprocess(cropped, preprocess_cfg)
+        image_tensor = image_to_tensor(processed, normalization=normalization).unsqueeze(0).to(device)
+        with torch.no_grad():
+            logits = sliding_window_inference(model, image_tensor, patch_size=patch_size, overlap=overlap)
+        mask = (torch.sigmoid(logits).cpu().numpy()[0, 0] >= threshold).astype(np.uint8) * 255
+
+        full_mask = np.zeros_like(original, dtype=np.uint8)
+        full_mask[:crop_height, :] = mask
+        overlay = build_overlay(original, full_mask)
+
+        stem = Path(item["image_name"]).stem
+        mask_path = output_dir / f"{stem}_mask.png"
+        overlay_path = output_dir / f"{stem}_overlay.png"
+        write_image(str(mask_path), full_mask)
+        write_image(str(overlay_path), overlay)
+        items.append(
+            {
+                "image_id": item["image_id"],
+                "image_name": item["image_name"],
+                "image_path": item["image_path"],
                 "relative_input_path": item["relative_input_path"],
                 "mask_path": str(mask_path),
                 "overlay_path": str(overlay_path),
@@ -176,6 +286,8 @@ def main() -> None:
     try:
         if model_kind == "matsam":
             manifest = run_matsam(config)
+        elif model_kind == "mbu_netpp":
+            manifest = run_mbu_netpp(config)
         elif model_kind == "custom":
             manifest = run_custom(config)
         else:

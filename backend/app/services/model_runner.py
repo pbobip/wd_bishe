@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -11,6 +13,11 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.config import SETTINGS
 from backend.app.models.entities import ModelRunner
+
+logger = logging.getLogger(__name__)
+
+# Default 10 minutes per image for deep learning inference
+_DEFAULT_TIMEOUT_PER_IMAGE_SEC = 600
 
 
 class ModelRunnerService:
@@ -42,25 +49,77 @@ class ModelRunnerService:
         config_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
         script_path = Path(__file__).resolve().parent / "runners" / "dl_infer.py"
+        cmd = [runner.python_path, str(script_path), str(config_path)]
+        logger.info("[ModelRunner] Starting inference: run_id=%s, model_kind=%s, cmd=%s", payload["run_id"], payload["model_kind"], cmd)
+
+        stdout_lines: list[str] = []
+        stderr_lines: list[str] = []
+
+        def stream_logger(stream, lines_list, label):
+            for line in iter(stream.readline, ""):
+                if line:
+                    lines_list.append(line.rstrip())
+                    logger.debug("[ModelRunner][%s] %s", label, line.rstrip())
+
         process = subprocess.Popen(
-            [runner.python_path, str(script_path), str(config_path)],
-            capture_output=True,
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
-            errors="ignore",
+            errors="replace",
             cwd=str(SETTINGS.backend_dir),
         )
-        stdout = ""
-        stderr = ""
+
+        stdout_thread = threading.Thread(target=stream_logger, args=(process.stdout, stdout_lines, "stdout"), daemon=True)
+        stderr_thread = threading.Thread(target=stream_logger, args=(process.stderr, stderr_lines, "stderr"), daemon=True)
+        stdout_thread.start()
+        stderr_thread.start()
+
+        total_items = len(payload.get("items", []))
+        timeout_per_image = _DEFAULT_TIMEOUT_PER_IMAGE_SEC
+        try:
+            cfg = json.loads(config_path.read_text(encoding="utf-8"))
+            timeout_per_image = int(cfg.get("timeout_per_image", _DEFAULT_TIMEOUT_PER_IMAGE_SEC))
+        except (OSError, json.JSONDecodeError, ValueError):
+            pass
+        timeout_sec = timeout_per_image * max(total_items, 1)
+        timeout_sec = max(timeout_sec, 60)
+
         progress_signature: tuple[int, int] | None = None
         progress_path = Path(payload["progress_path"]) if payload.get("progress_path") else None
-        while process.poll() is None:
-            progress_signature = self._emit_progress(progress_path, progress_callback, progress_signature)
-            time.sleep(0.2)
-        stdout, stderr = process.communicate()
-        progress_signature = self._emit_progress(progress_path, progress_callback, progress_signature)
+
+        try:
+            start_time = time.monotonic()
+            while process.poll() is None:
+                if time.monotonic() - start_time > timeout_sec:
+                    logger.error("[ModelRunner] Inference timed out after %ds (cmd=%s)", timeout_sec, cmd)
+                    process.kill()
+                    process.wait()
+                    raise TimeoutError(f"深度学习推理超时（{timeout_sec}秒），进程被强制终止。常见原因：模型加载卡住、CUDA OOM、大图像滑窗推理过慢。请检查权重文件路径是否正确，或尝试缩小图像/增大 timeout_per_image 配置。")
+                progress_signature = self._emit_progress(progress_path, progress_callback, progress_signature)
+                time.sleep(0.2)
+
+            process.wait()
+        except TimeoutError:
+            raise
+        except Exception as exc:
+            logger.error("[ModelRunner] Unexpected error during inference: %s", exc)
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            raise
+
+        stdout_thread.join(timeout=2)
+        stderr_thread.join(timeout=2)
+
         if process.returncode != 0:
-            raise RuntimeError(stderr.strip() or stdout.strip() or "深度学习推理失败")
+            stderr_text = "\n".join(stderr_lines[-50:]) if stderr_lines else ""
+            stdout_text = "\n".join(stdout_lines[-20:]) if stdout_lines else ""
+            logger.error("[ModelRunner] Inference failed (code=%d):\nstderr: %s\nstdout: %s", process.returncode, stderr_text, stdout_text)
+            raise RuntimeError(stderr_text.strip() or stdout_text.strip() or f"深度学习推理失败 (exit code: {process.returncode})")
+
+        logger.info("[ModelRunner] Inference completed successfully for run_id=%s", payload["run_id"])
         return json.loads(Path(payload["manifest_path"]).read_text(encoding="utf-8"))
 
     def _emit_progress(

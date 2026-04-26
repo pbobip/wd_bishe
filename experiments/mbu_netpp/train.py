@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,21 @@ from experiments.mbu_netpp.losses import MBULoss
 from experiments.mbu_netpp.metrics import average_metric_dicts, compute_segmentation_metrics
 from experiments.mbu_netpp.models import build_model, sliding_window_inference
 from experiments.mbu_netpp.preparation import prepare_supervised_dataset
+from experiments.mbu_netpp.training_state import collect_crossval_summary, load_resume_state
+
+
+def build_grad_scaler(use_amp: bool) -> Any:
+    if hasattr(torch, "amp") and hasattr(torch.amp, "GradScaler"):
+        return torch.amp.GradScaler("cuda", enabled=use_amp)
+    return torch.cuda.amp.GradScaler(enabled=use_amp)
+
+
+def build_autocast_context(use_amp: bool) -> Any:
+    if not use_amp:
+        return nullcontext()
+    if hasattr(torch, "amp") and hasattr(torch.amp, "autocast"):
+        return torch.amp.autocast(device_type="cuda", enabled=True)
+    return torch.cuda.amp.autocast(enabled=True)
 
 
 def maybe_prepare_data(config: dict[str, Any]) -> None:
@@ -52,6 +68,7 @@ def build_dataloaders(config: dict[str, Any], fold_index: int) -> tuple[DataLoad
         normalization=str(data_cfg.get("normalization", "minmax")),
         preprocess_config=data_cfg.get("preprocess"),
         augmentation_config=data_cfg.get("augmentation"),
+        sampling_config=data_cfg.get("sampling"),
         samples_per_epoch=int(data_cfg.get("samples_per_epoch", 96)),
     )
     val_dataset = SEMSegmentationDataset(
@@ -112,6 +129,13 @@ def train_one_fold(config: dict[str, Any], fold_index: int) -> dict[str, Any]:
     data_cfg = config["data"]
     device = resolve_device(str(training_cfg.get("device", "auto")))
     output_root = ensure_dir(Path(experiment_cfg["output_root"]) / f"fold_{fold_index}")
+    summary_path = output_root / "summary.json"
+    history_path = output_root / "history.json"
+    last_checkpoint_path = output_root / "last.pt"
+
+    if summary_path.exists():
+        print(f"[fold={fold_index}] 已存在 summary.json，跳过训练")
+        return json.loads(summary_path.read_text(encoding="utf-8"))
 
     train_loader, val_loader = build_dataloaders(config, fold_index)
     model = build_model(config["model"]).to(device)
@@ -129,7 +153,7 @@ def train_one_fold(config: dict[str, Any], fold_index: int) -> dict[str, Any]:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, int(training_cfg.get("epochs", 80))))
 
     use_amp = bool(training_cfg.get("amp", True)) and device.type == "cuda"
-    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    scaler = build_grad_scaler(use_amp)
 
     epochs = int(training_cfg.get("epochs", 80))
     threshold = float(training_cfg.get("threshold", 0.5))
@@ -141,8 +165,30 @@ def train_one_fold(config: dict[str, Any], fold_index: int) -> dict[str, Any]:
     history: list[dict[str, Any]] = []
     best_metric: float | None = None
     best_summary: dict[str, Any] | None = None
+    start_epoch = 1
 
-    for epoch in range(1, epochs + 1):
+    if bool(training_cfg.get("resume", False)) and last_checkpoint_path.exists():
+        try:
+            resume_state = load_resume_state(last_checkpoint_path)
+        except Exception as exc:
+            print(f"[fold={fold_index}] last.pt 损坏或不可读，删除后从头开始: {exc!r}")
+            last_checkpoint_path.unlink(missing_ok=True)
+        else:
+            if resume_state.get("model_state_dict"):
+                model.load_state_dict(resume_state["model_state_dict"], strict=True)
+            if resume_state.get("optimizer_state_dict"):
+                optimizer.load_state_dict(resume_state["optimizer_state_dict"])
+            if resume_state.get("scheduler_state_dict"):
+                scheduler.load_state_dict(resume_state["scheduler_state_dict"])
+            if use_amp and resume_state.get("scaler_state_dict"):
+                scaler.load_state_dict(resume_state["scaler_state_dict"])
+            history = list(resume_state.get("history") or [])
+            best_metric = resume_state.get("best_metric")
+            best_summary = dict(resume_state.get("best_summary") or {})
+            start_epoch = int(resume_state.get("start_epoch", 1))
+            print(f"[fold={fold_index}] 从 last.pt 恢复，继续 epoch={start_epoch}")
+
+    for epoch in range(start_epoch, epochs + 1):
         model.train()
         train_components: list[dict[str, float]] = []
         for batch in train_loader:
@@ -150,7 +196,7 @@ def train_one_fold(config: dict[str, Any], fold_index: int) -> dict[str, Any]:
             mask = batch["mask"].to(device)
             edge = batch["edge"].to(device)
             optimizer.zero_grad(set_to_none=True)
-            with torch.amp.autocast(device_type="cuda", enabled=use_amp):
+            with build_autocast_context(use_amp):
                 outputs = model(image)
                 loss, components = criterion(outputs, {"mask": mask, "edge": edge})
             scaler.scale(loss).backward()
@@ -208,16 +254,33 @@ def train_one_fold(config: dict[str, Any], fold_index: int) -> dict[str, Any]:
             }
             torch.save(checkpoint, output_root / "best.pt")
 
-    save_json(output_root / "history.json", history)
+        save_json(history_path, history)
+        torch.save(
+            {
+                "fold_index": fold_index,
+                "epoch": epoch,
+                "config": config,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+                "scaler_state_dict": scaler.state_dict() if use_amp else None,
+                "history": history,
+                "best_metric": best_metric,
+                "best_summary": best_summary or {},
+            },
+            last_checkpoint_path,
+        )
+
     fold_result = {
         "fold_index": fold_index,
         "best_metric_name": primary_metric,
         "best_metric": best_metric,
         "best_summary": best_summary or {},
-        "history_path": str(output_root / "history.json"),
+        "history_path": str(history_path),
         "checkpoint_path": str(output_root / "best.pt"),
     }
-    save_json(output_root / "summary.json", fold_result)
+    save_json(summary_path, fold_result)
+    last_checkpoint_path.unlink(missing_ok=True)
     return fold_result
 
 
@@ -226,6 +289,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", required=True, help="YAML 配置路径")
     parser.add_argument("--fold", type=int, default=None, help="只运行指定 fold")
     parser.add_argument("--run-all-folds", action="store_true", help="运行全部 fold")
+    parser.add_argument("--resume", action="store_true", help="若存在 last.pt，则从断点继续训练")
+    parser.add_argument("--summarize-only", action="store_true", help="只汇总已完成 fold 结果")
     return parser.parse_args()
 
 
@@ -236,6 +301,8 @@ def main() -> None:
     maybe_prepare_data(config)
 
     num_folds = int(config["data"].get("num_folds", 3))
+    output_root = Path(config["experiment"]["output_root"])
+    experiment_name = str(config["experiment"]["name"])
     if args.run_all_folds:
         fold_indices = list(range(num_folds))
     elif args.fold is not None:
@@ -243,13 +310,33 @@ def main() -> None:
     else:
         fold_indices = [0]
 
+    if args.resume:
+        config.setdefault("training", {})["resume"] = True
+
+    if args.summarize_only:
+        summary = collect_crossval_summary(
+            experiment_name=experiment_name,
+            experiment_root=output_root,
+            fold_indices=fold_indices,
+        )
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return
+
     fold_results = [train_one_fold(config, fold_index=fold_index) for fold_index in fold_indices]
-    summary = {
-        "experiment": config["experiment"]["name"],
-        "fold_results": fold_results,
-        "mean_best_summary": average_metric_dicts([item["best_summary"] for item in fold_results if item.get("best_summary")]),
-    }
-    save_json(Path(config["experiment"]["output_root"]) / "crossval_summary.json", summary)
+    if len(fold_results) == num_folds and set(fold_indices) == set(range(num_folds)):
+        summary = collect_crossval_summary(
+            experiment_name=experiment_name,
+            experiment_root=output_root,
+            fold_indices=fold_indices,
+        )
+    else:
+        summary = {
+            "experiment": experiment_name,
+            "fold_results": fold_results,
+            "mean_best_summary": average_metric_dicts(
+                [item["best_summary"] for item in fold_results if item.get("best_summary")]
+            ),
+        }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 

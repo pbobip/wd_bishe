@@ -32,6 +32,7 @@ export default defineConfig({
     },
   },
   build: {
+    target: 'es2020',
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -43,5 +44,9 @@ export default defineConfig({
         },
       },
     },
+  },
+  optimizeDeps: {
+    include: ['vue', 'vue-router', 'axios'],
+    exclude: [],
   },
 })

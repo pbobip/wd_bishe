@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 
 import { api } from '../api'
-import type { ModelRunner, Project } from '../types'
+import type { ModelRunner } from '../types'
 import {
   buildUmPerPxFromScaleBar,
   inspectCalibrationProbe,
@@ -12,11 +12,9 @@ import {
 } from '../utils/calibration'
 
 const router = useRouter()
-const route = useRoute()
 const SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.tif', '.tiff']
 const UPLOAD_CHUNK_SIZE = 10
 
-const projects = ref<Project[]>([])
 const runners = ref<ModelRunner[]>([])
 const selectedFiles = ref<File[]>([])
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -32,11 +30,9 @@ const selectionSource = ref<'files' | 'folder'>('files')
 const segmentationOptions = [
   { label: '传统分割', value: 'traditional' },
   { label: '深度学习', value: 'dl' },
-  { label: '结果对比', value: 'compare' },
 ]
 
 const form = reactive({
-  project_id: 1,
   name: `任务-${new Date().toLocaleString()}`,
   input_mode: 'batch',
   segmentation_mode: 'traditional',
@@ -66,16 +62,12 @@ const form = reactive({
     close_kernel: 3,
   },
   dl_model: {
-    model_slot: 'custom',
+    model_slot: 'mbu_netpp',
     runner_id: undefined as number | undefined,
     weight_path: '',
-    input_size: 1024,
-    threshold: 0.3,
+    input_size: 256,
     device: 'auto',
     extra_params: {},
-  },
-  compare: {
-    enabled: false,
   },
   stats: {
     enabled: true,
@@ -92,14 +84,8 @@ const form = reactive({
 })
 
 const loadInitialData = async () => {
-  const [projectRes, runnerRes] = await Promise.all([api.get<Project[]>('/projects'), api.get<ModelRunner[]>('/model-runners')])
-  projects.value = projectRes.data
+  const [runnerRes] = await Promise.all([api.get<ModelRunner[]>('/model-runners')])
   runners.value = runnerRes.data
-  if (projects.value[0]) {
-    const queryProjectId = Number(route.query.project_id)
-    const matchedProject = projects.value.find((project) => project.id === queryProjectId)
-    form.project_id = matchedProject?.id ?? projects.value[0].id
-  }
 }
 
 const segmentationHint = computed(() => {
@@ -107,9 +93,9 @@ const segmentationHint = computed(() => {
     return '适合特征明显、速度优先的场景，输出传统阈值分割、边界图和统计结果。'
   }
   if (form.segmentation_mode === 'dl') {
-    return '调用深度学习模型接口做自动分割，适合后续接入 MatSAM、SAM LoRA 或 ResNeXt50。'
+    return '调用 MBU-Net++ 主模型或其他已配置运行器做自动分割。'
   }
-  return '同时输出传统分割和深度学习结果，适合答辩展示双路线差异。'
+  return '请选择传统分割或深度学习路线。'
 })
 
 const currentModeLabel = computed(
@@ -155,16 +141,6 @@ const calibrationCandidates = computed(() => calibrationProbe.value?.common_scal
 const currentRunner = computed(() => {
   if (form.segmentation_mode === 'traditional') return null
   return runners.value.find((runner) => runner.slot === form.dl_model.model_slot) ?? null
-})
-
-const runnerNotes = computed(() => {
-  if (form.segmentation_mode === 'traditional') {
-    return ['传统分割当前不依赖外部模型运行器', '可直接输出掩码、边界和统计结果']
-  }
-  return [
-    currentRunner.value ? `当前槽位：${currentRunner.value.display_name}` : '当前槽位尚未匹配到运行器',
-    '深度学习或结果对比模式会调用对应环境执行推理',
-  ]
 })
 
 const onFilesChange = (event: Event, source: 'files' | 'folder') => {
@@ -243,7 +219,6 @@ const executeTask = async () => {
   }
   loading.value = true
   try {
-    form.compare.enabled = form.segmentation_mode === 'compare'
     if (form.segmentation_mode !== 'traditional') {
       const matched = runners.value.find((runner) => runner.slot === form.dl_model.model_slot)
       form.dl_model.runner_id = matched?.id
@@ -311,10 +286,7 @@ onMounted(() => {
     <div class="dashboard-main-column">
       <section class="glass-card panel panel-form">
         <div class="panel-header panel-header-with-action">
-          <div>
-            <h2 class="section-title">新建任务</h2>
-            <p class="section-subtitle">先选输入，再定模式，预处理单独开关控制</p>
-          </div>
+          <h2 class="section-title">新建任务</h2>
           <div class="panel-header-action">
             <el-button class="header-submit-button" type="primary" size="large" :loading="loading" @click="submitTask">
               创建并执行
@@ -324,18 +296,9 @@ onMounted(() => {
 
         <el-form label-position="top">
         <section class="form-section">
-          <div class="section-inline-head">
-            <h3>基础信息</h3>
-            <span>任务名称、图像来源和模式选择</span>
-          </div>
+          <h3 class="section-inline-head">基础信息</h3>
 
           <div class="form-grid two-columns">
-            <el-form-item v-if="projects.length > 1" label="项目">
-              <el-select v-model="form.project_id">
-                <el-option v-for="project in projects" :key="project.id" :label="project.name" :value="project.id" />
-              </el-select>
-            </el-form-item>
-
             <el-form-item label="任务名称" class="form-span-2">
               <el-input v-model="form.name" />
             </el-form-item>
@@ -388,10 +351,7 @@ onMounted(() => {
         </section>
 
         <section class="form-section">
-          <div class="section-inline-head">
-            <h3>统一配置</h3>
-            <span>输出目录、比例尺和预处理开关</span>
-          </div>
+          <h3 class="section-inline-head">统一配置</h3>
 
           <div class="form-grid two-columns">
             <el-form-item class="form-span-2" label="um_per_px">
@@ -424,10 +384,7 @@ onMounted(() => {
         </section>
 
         <section class="form-section">
-          <div class="section-inline-head">
-            <h3>{{ form.segmentation_mode === 'traditional' ? '传统分割参数' : form.segmentation_mode === 'dl' ? '深度学习参数' : '分割参数' }}</h3>
-            <span>{{ form.segmentation_mode === 'compare' ? '当前会同时保留两条路线的配置' : '按当前分割模式填写必要参数' }}</span>
-          </div>
+          <h3 class="section-inline-head">分割参数配置</h3>
 
           <div class="form-grid two-columns">
             <template v-if="form.segmentation_mode !== 'dl'">
@@ -453,6 +410,7 @@ onMounted(() => {
             <template v-if="form.segmentation_mode !== 'traditional'">
               <el-form-item label="模型槽位">
                 <el-select v-model="form.dl_model.model_slot">
+                  <el-option label="MBU-Net++ 主模型" value="mbu_netpp" />
                   <el-option label="MatSAM" value="matsam" />
                   <el-option label="SAM LoRA" value="sam_lora" />
                   <el-option label="ResNeXt50" value="resnext50" />
@@ -465,9 +423,6 @@ onMounted(() => {
               <el-form-item label="输入尺寸">
                 <el-input-number v-model="form.dl_model.input_size" :min="256" :step="128" />
               </el-form-item>
-              <el-form-item label="阈值">
-                <el-slider v-model="form.dl_model.threshold" :min="0.1" :max="0.9" :step="0.05" />
-              </el-form-item>
             </template>
           </div>
         </section>
@@ -479,10 +434,7 @@ onMounted(() => {
     <aside class="dashboard-side-column">
       <section class="glass-card panel panel-guide">
         <div class="panel-header compact-header">
-          <div>
-            <h2 class="section-title">当前方案</h2>
-            <p class="section-subtitle">把关键决策压缩到一眼能看完的摘要区。</p>
-          </div>
+          <h2 class="section-title">当前方案</h2>
         </div>
 
         <div class="guide-summary">
@@ -512,21 +464,17 @@ onMounted(() => {
 
         <div class="guide-block compact-block">
           <span class="status-chip">流程</span>
-          <p>导入图像后直接执行，结果会自动入库，并在结果中心和历史记录里回看。</p>
+          <p>导入图像后直接执行，结果会自动入库。</p>
         </div>
       </section>
 
       <section class="glass-card panel panel-side">
         <div class="panel-header compact-header">
-          <div>
-            <h2 class="section-title">运行器状态</h2>
-            <p class="section-subtitle">这里只保留和当前模式相关的信息。</p>
-          </div>
+          <h2 class="section-title">运行器状态</h2>
         </div>
 
         <div class="runner-current">
           <strong>{{ currentRunner?.display_name ?? '传统分割不依赖运行器' }}</strong>
-          <p v-for="note in runnerNotes" :key="note">{{ note }}</p>
         </div>
 
         <div v-if="form.segmentation_mode !== 'traditional'" class="runner-list compact-runner-list">
@@ -729,16 +677,8 @@ onMounted(() => {
 
 .section-inline-head {
   margin-bottom: 14px;
-}
-
-.section-inline-head h3 {
-  margin: 0 0 4px;
   font-size: 18px;
-}
-
-.section-inline-head span {
-  color: var(--muted);
-  font-size: 13px;
+  font-weight: 700;
 }
 
 .form-grid {
@@ -819,7 +759,7 @@ onMounted(() => {
 
 .mode-hint-card strong {
   display: block;
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .mode-hint-card p {
@@ -891,7 +831,7 @@ onMounted(() => {
 }
 
 .guide-metric strong {
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .guide-block p {
@@ -916,8 +856,7 @@ onMounted(() => {
 
 .runner-current strong {
   display: block;
-  margin-bottom: 8px;
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .runner-current p {
@@ -1021,7 +960,7 @@ onMounted(() => {
 }
 
 .probe-card strong {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .calibration-form {
@@ -1046,7 +985,7 @@ onMounted(() => {
 }
 
 .calibration-result strong {
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .candidate-row {

@@ -93,6 +93,7 @@ class PipelineService:
         layout_context: dict[int, dict[str, Any]] = {}
         batch_summaries: dict[str, dict[str, Any]] = {}
         chart_paths: dict[str, str] = {}
+        image_calibration_map = self._build_image_calibration_map(config)
         self._init_execution_summary(db, run, total_images)
 
         self._start_step(db, run, "input", self._STEP_LABELS["input"], total_images=total_images)
@@ -213,36 +214,29 @@ class PipelineService:
             db.commit()
             self._finish_step(db, run, "preprocess", total_images=total_images)
 
-        if config.segmentation_mode in {"traditional", "compare"}:
+        if config.segmentation_mode == "traditional":
             self._start_step(db, run, "traditional", self._STEP_LABELS["traditional"], total_images=total_images)
             batch_summaries["traditional"] = self._run_traditional(
-                db, run, images, processed_paths, layout_context, config.input_config.um_per_px, config
+                db, run, images, processed_paths, layout_context, image_calibration_map, config
             )
-            run.progress = 0.55 if config.segmentation_mode == "traditional" else 0.4
+            run.progress = 0.55
             db.commit()
             self._finish_step(db, run, "traditional", total_images=total_images)
 
-        dl_failed = None
-        if config.segmentation_mode in {"dl", "compare"}:
+        if config.segmentation_mode == "dl":
             self._start_step(db, run, "dl", self._STEP_LABELS["dl"], total_images=total_images)
-            try:
-                batch_summaries["dl"] = self._run_dl(
-                    db, run, images, processed_paths, layout_context, config.input_config.um_per_px, config
-                )
-                run.progress = 0.7
-                self._finish_step(db, run, "dl", total_images=total_images)
-            except Exception as exc:
-                dl_failed = str(exc)
-                self._fail_step(db, run, "dl", dl_failed)
-                if config.segmentation_mode == "dl":
-                    raise
+            batch_summaries["dl"] = self._run_dl(
+                db, run, images, processed_paths, layout_context, image_calibration_map, config
+            )
+            run.progress = 0.7
+            self._finish_step(db, run, "dl", total_images=total_images)
             db.commit()
 
         self._start_step(db, run, "stats", self._STEP_LABELS["stats"], total_images=total_images)
         self._update_step_progress(db, run, "stats", processed=total_images, total=total_images)
         run_metrics = db.query(MetricRecord).filter(MetricRecord.run_id == run_id).all()
         execution_summary = self._get_execution_summary(run)
-        run.summary = self._build_summary(run, run_metrics, batch_summaries, dl_failed, execution_summary)
+        run.summary = self._build_summary(run, run_metrics, batch_summaries, execution_summary)
         run.chart_data = self._build_charts(run_id, batch_summaries, chart_paths)
         run.progress = 0.88
         db.commit()
@@ -250,13 +244,65 @@ class PipelineService:
 
         self._start_step(db, run, "export", self._STEP_LABELS["export"], total_images=total_images)
         self._update_step_progress(db, run, "export", processed=total_images, total=total_images)
-        exports = export_service.export_run(db, run_id, run.config, chart_paths)
+        exports = export_service.export_run(db, run_id, run.config, chart_paths, replace_existing=True)
         run.export_bundle_path = exports["bundle"]
         run.progress = 1.0
-        run.status = "partial_success" if dl_failed and config.segmentation_mode == "compare" else "completed"
+        run.status = "completed"
         run.finished_at = datetime.utcnow()
         db.commit()
         self._finish_step(db, run, "export", total_images=total_images)
+
+    def _build_image_calibration_map(self, config: RunCreate) -> dict[str, float]:
+        mapping: dict[str, float] = {}
+        for item in config.input_config.image_calibrations:
+            value = item.um_per_px
+            if value is None or value <= 0:
+                continue
+            for key in (
+                item.relative_path,
+                item.original_name,
+                Path(item.relative_path).name,
+                Path(item.original_name).name if item.original_name else None,
+            ):
+                normalized = (key or "").strip()
+                if normalized:
+                    mapping[normalized] = float(value)
+        return mapping
+
+    def _resolve_image_calibration(self, image: ImageAsset, image_calibration_map: dict[str, float], config: RunCreate) -> dict[str, Any]:
+        image_value = next(
+            (
+                image_calibration_map[key]
+                for key in (
+                    image.relative_path,
+                    image.original_name,
+                    Path(image.relative_path).name,
+                    Path(image.original_name).name,
+                )
+                if key in image_calibration_map
+            ),
+            None,
+        )
+        if image_value is not None and image_value > 0:
+            return {
+                "um_per_px": float(image_value),
+                "calibrated": True,
+                "source": "image_override",
+            }
+
+        default_value = config.input_config.um_per_px
+        if default_value is not None and default_value > 0:
+            return {
+                "um_per_px": float(default_value),
+                "calibrated": True,
+                "source": "task_default",
+            }
+
+        return {
+            "um_per_px": None,
+            "calibrated": False,
+            "source": "pixels_only",
+        }
 
     def _run_traditional(
         self,
@@ -265,7 +311,7 @@ class PipelineService:
         images: list[ImageAsset],
         source_paths: dict[int, str],
         layout_context: dict[int, dict[str, Any]],
-        um_per_px: float | None,
+        image_calibration_map: dict[str, float],
         config: RunCreate,
     ) -> dict[str, Any]:
         output_dir = storage_service.run_subdir(run.id, "outputs", "traditional")
@@ -274,6 +320,8 @@ class PipelineService:
         for index, image in enumerate(images, start=1):
             source = read_gray(storage_service.absolute_path(source_paths[image.id]))
             result = traditional_service.segment(source, config.traditional_seg)
+            calibration = self._resolve_image_calibration(image, image_calibration_map, config)
+            effective_um_per_px = calibration["um_per_px"]
             stem = Path(image.original_name).stem
             mask_path = output_dir / f"{stem}_mask.png"
             overlay_path = output_dir / f"{stem}_overlay.png"
@@ -286,12 +334,15 @@ class PipelineService:
 
             stats = statistics_service.summarize(
                 result["mask"],
-                um_per_px=um_per_px,
+                um_per_px=effective_um_per_px,
                 objects=result.get("objects"),
                 config=config.traditional_seg,
             )
             stats["traditional_method"] = config.traditional_seg.method
             stats["traditional_route_details"] = result.get("route_details", {})
+            stats["applied_um_per_px"] = effective_um_per_px
+            stats["calibrated"] = bool(calibration["calibrated"])
+            stats["calibration_source"] = calibration["source"]
             threshold_value = result.get("route_details", {}).get("threshold")
             if threshold_value is not None:
                 stats["threshold"] = float(threshold_value)
@@ -304,18 +355,16 @@ class PipelineService:
                     for key, value in layout_context[image.id].items()
                     if key not in {"analysis_relative_path", "analysis_url", "footer_relative_path", "footer_url"}
                 }
-            artifact = {
-                "input_url": storage_service.static_url(image.relative_path),
-                "processed_url": storage_service.static_url(source_paths[image.id])
-                if source_paths[image.id] != image.relative_path
-                else None,
-                "analysis_input_url": layout_context.get(image.id, {}).get("analysis_url"),
-                "footer_panel_url": layout_context.get(image.id, {}).get("footer_url"),
-                "mask_url": storage_service.static_url(storage_service.relative_path(mask_path)),
-                "overlay_url": storage_service.static_url(storage_service.relative_path(overlay_path)),
-                "edge_url": storage_service.static_url(storage_service.relative_path(edge_path)),
-                "object_overlay_url": storage_service.static_url(storage_service.relative_path(object_overlay_path)),
-            }
+            artifact = self.build_metric_artifacts(
+                input_relative=image.relative_path,
+                processed_relative=source_paths[image.id] if source_paths[image.id] != image.relative_path else None,
+                analysis_relative=layout_context.get(image.id, {}).get("analysis_relative_path"),
+                footer_relative=layout_context.get(image.id, {}).get("footer_relative_path"),
+                mask_relative=storage_service.relative_path(mask_path),
+                overlay_relative=storage_service.relative_path(overlay_path),
+                edge_relative=storage_service.relative_path(edge_path),
+                object_overlay_relative=storage_service.relative_path(object_overlay_path),
+            )
             rows.append({"summary": stats, "artifact": artifact})
             db.add(MetricRecord(run_id=run.id, image_id=image.id, mode="traditional", summary=stats, artifacts=artifact))
             self._update_step_progress(
@@ -335,7 +384,7 @@ class PipelineService:
         images: list[ImageAsset],
         source_paths: dict[int, str],
         layout_context: dict[int, dict[str, Any]],
-        um_per_px: float | None,
+        image_calibration_map: dict[str, float],
         config: RunCreate,
     ) -> dict[str, Any]:
         output_dir = storage_service.run_subdir(run.id, "outputs", "dl")
@@ -347,12 +396,12 @@ class PipelineService:
             "runner_id": config.dl_model.runner_id,
             "weight_path": config.dl_model.weight_path,
             "input_size": config.dl_model.input_size,
-            "threshold": config.dl_model.threshold,
             "device": config.dl_model.device,
             "extra_params": config.dl_model.extra_params,
             "manifest_path": str(manifest_path),
             "progress_path": str(progress_path),
             "output_dir": str(output_dir),
+            "auto_crop_sem_region": False,  # always skip crop in inference; input step already handled footer removal
             "items": [
                 {
                     "image_id": image.id,
@@ -385,11 +434,17 @@ class PipelineService:
         )
         rows: list[dict[str, Any]] = []
         for item in manifest["items"]:
+            image_id = int(item["image_id"])
+            image = next((candidate for candidate in images if candidate.id == image_id), None)
+            if image is None:
+                continue
+            calibration = self._resolve_image_calibration(image, image_calibration_map, config)
+            effective_um_per_px = calibration["um_per_px"]
             mask_image = read_gray(item["mask_path"])
             source_image = read_gray(item["image_path"])
             object_stats = statistics_service.build_object_stats(
                 mask_image,
-                um_per_px=um_per_px,
+                um_per_px=effective_um_per_px,
                 config=config.traditional_seg,
                 base_image=source_image,
             )
@@ -403,12 +458,14 @@ class PipelineService:
             write_image(object_overlay_path, object_stats["object_overlay"])
             stats = statistics_service.summarize(
                 refined_mask,
-                um_per_px=um_per_px,
+                um_per_px=effective_um_per_px,
                 objects=object_stats["objects"],
                 config=config.traditional_seg,
             )
             stats["image_name"] = item["image_name"]
-            image_id = int(item["image_id"])
+            stats["applied_um_per_px"] = effective_um_per_px
+            stats["calibrated"] = bool(calibration["calibrated"])
+            stats["calibration_source"] = calibration["source"]
             if layout_context.get(image_id, {}).get("calibration_hint"):
                 stats["calibration_hint"] = layout_context[image_id]["calibration_hint"]
             if image_id in layout_context:
@@ -418,18 +475,16 @@ class PipelineService:
                     if key not in {"analysis_relative_path", "analysis_url", "footer_relative_path", "footer_url"}
                 }
             processed_relative = source_paths.get(image_id, item["relative_input_path"])
-            artifact = {
-                "input_url": storage_service.static_url(item["relative_input_path"]),
-                "processed_url": storage_service.static_url(processed_relative)
-                if processed_relative != item["relative_input_path"]
-                else None,
-                "analysis_input_url": layout_context.get(image_id, {}).get("analysis_url"),
-                "footer_panel_url": layout_context.get(image_id, {}).get("footer_url"),
-                "mask_url": storage_service.static_url(mask_relative),
-                "overlay_url": storage_service.static_url(overlay_relative),
-                "object_overlay_url": storage_service.static_url(storage_service.relative_path(object_overlay_path)),
-                "edge_url": None,
-            }
+            artifact = self.build_metric_artifacts(
+                input_relative=item["relative_input_path"],
+                processed_relative=processed_relative if processed_relative != item["relative_input_path"] else None,
+                analysis_relative=layout_context.get(image_id, {}).get("analysis_relative_path"),
+                footer_relative=layout_context.get(image_id, {}).get("footer_relative_path"),
+                mask_relative=mask_relative,
+                overlay_relative=overlay_relative,
+                edge_relative=None,
+                object_overlay_relative=storage_service.relative_path(object_overlay_path),
+            )
             rows.append({"summary": stats, "artifact": artifact})
             db.add(
                 MetricRecord(
@@ -453,39 +508,122 @@ class PipelineService:
         color_mask[mask > 0] = (0, 180, 0)
         return cv2.addWeighted(base, 0.75, color_mask, 0.25, 0)
 
+    def build_metric_artifacts(
+        self,
+        *,
+        input_relative: str | None,
+        processed_relative: str | None,
+        analysis_relative: str | None,
+        footer_relative: str | None,
+        mask_relative: str | None,
+        overlay_relative: str | None,
+        edge_relative: str | None,
+        object_overlay_relative: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "input_path": input_relative,
+            "input_url": storage_service.static_url(input_relative),
+            "processed_path": processed_relative,
+            "processed_url": storage_service.static_url(processed_relative),
+            "analysis_input_path": analysis_relative,
+            "analysis_input_url": storage_service.static_url(analysis_relative),
+            "footer_panel_path": footer_relative,
+            "footer_panel_url": storage_service.static_url(footer_relative),
+            "mask_path": mask_relative,
+            "mask_url": storage_service.static_url(mask_relative),
+            "overlay_path": overlay_relative,
+            "overlay_url": storage_service.static_url(overlay_relative),
+            "edge_path": edge_relative,
+            "edge_url": storage_service.static_url(edge_relative),
+            "object_overlay_path": object_overlay_relative,
+            "object_overlay_url": storage_service.static_url(object_overlay_relative),
+        }
+
+    def rebuild_confirmed_outputs(self, db: Session, run_id: int) -> RunTask:
+        run = db.get(RunTask, run_id)
+        if run is None:
+            raise ValueError(f"任务不存在: {run_id}")
+
+        metrics = db.query(MetricRecord).filter(MetricRecord.run_id == run_id).all()
+        if not metrics:
+            raise ValueError("当前任务还没有可重建的确认结果")
+
+        batch_summaries = self._collect_batch_summaries(metrics)
+        chart_paths: dict[str, str] = {}
+        execution_summary = self._get_execution_summary(run)
+
+        run.summary = self._build_summary(run, metrics, batch_summaries, execution_summary)
+        run.chart_data = self._build_charts(run.id, batch_summaries, chart_paths)
+        exports = export_service.export_run(
+            db,
+            run.id,
+            run.config,
+            chart_paths,
+            replace_existing=True,
+        )
+        run.export_bundle_path = exports["bundle"]
+        db.commit()
+        db.refresh(run)
+        return run
+
+    def _collect_batch_summaries(self, metrics: list[MetricRecord]) -> dict[str, dict[str, Any]]:
+        rows_by_mode: dict[str, list[dict[str, Any]]] = {}
+        for metric in metrics:
+            rows_by_mode.setdefault(metric.mode, []).append(
+                {
+                    "summary": dict(metric.summary or {}),
+                    "artifact": dict(metric.artifacts or {}),
+                }
+            )
+        return {mode: self._aggregate_mode(rows) for mode, rows in rows_by_mode.items() if rows}
+
     def _aggregate_mode(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
         summaries = [row["summary"] for row in rows]
-        areas = [float(area) for item in summaries for area in item["areas"]]
-        sizes = [float(size) for item in summaries for size in item.get("sizes", item["diameters"])]
-        diameters = [float(diam) for item in summaries for diam in item["diameters"]]
-        perimeters = [float(value) for item in summaries for value in item.get("perimeters", [])]
-        majors = [float(value) for item in summaries for value in item.get("majors", [])]
-        minors = [float(value) for item in summaries for value in item.get("minors", [])]
-        ferets = [float(value) for item in summaries for value in item.get("ferets", [])]
-        minferets = [float(value) for item in summaries for value in item.get("minferets", [])]
-        aspect_ratios = [float(value) for item in summaries for value in item.get("aspect_ratios", [])]
-        circularities = [float(value) for item in summaries for value in item.get("circularities", [])]
-        roundnesses = [float(value) for item in summaries for value in item.get("roundnesses", [])]
-        solidities = [float(value) for item in summaries for value in item.get("solidities", [])]
-        channel_widths_x = [float(width) for item in summaries for width in item.get("channel_widths_x", [])]
-        channel_widths_y = [float(width) for item in summaries for width in item.get("channel_widths_y", [])]
+        calibrated_summaries = [item for item in summaries if bool(item.get("calibrated"))]
+        physical_summaries = calibrated_summaries or summaries
+        calibrated_image_count = len(calibrated_summaries)
+        physical_stats_image_count = len(physical_summaries)
+        total_image_count = len(summaries)
+        mixed_calibration = bool(calibrated_summaries) and calibrated_image_count < total_image_count
+        if calibrated_summaries:
+            physical_stats_scope = "calibrated_subset" if mixed_calibration else "all_calibrated"
+        else:
+            physical_stats_scope = "pixels_only"
+
+        areas = [float(area) for item in physical_summaries for area in item["areas"]]
+        sizes = [float(size) for item in physical_summaries for size in item.get("sizes", item["diameters"])]
+        diameters = [float(diam) for item in physical_summaries for diam in item["diameters"]]
+        perimeters = [float(value) for item in physical_summaries for value in item.get("perimeters", [])]
+        majors = [float(value) for item in physical_summaries for value in item.get("majors", [])]
+        minors = [float(value) for item in physical_summaries for value in item.get("minors", [])]
+        ferets = [float(value) for item in physical_summaries for value in item.get("ferets", [])]
+        minferets = [float(value) for item in physical_summaries for value in item.get("minferets", [])]
+        aspect_ratios = [float(value) for item in physical_summaries for value in item.get("aspect_ratios", [])]
+        circularities = [float(value) for item in physical_summaries for value in item.get("circularities", [])]
+        roundnesses = [float(value) for item in physical_summaries for value in item.get("roundnesses", [])]
+        solidities = [float(value) for item in physical_summaries for value in item.get("solidities", [])]
+        channel_widths_x = [float(width) for item in physical_summaries for width in item.get("channel_widths_x", [])]
+        channel_widths_y = [float(width) for item in physical_summaries for width in item.get("channel_widths_y", [])]
         object_counts = [int(item.get("object_count", item.get("particle_count", 0))) for item in summaries]
         filtered_object_counts = [int(item.get("filtered_object_count", 0)) for item in summaries]
         volume_fractions = [float(item["volume_fraction"]) for item in summaries]
         particle_counts = [int(item["particle_count"]) for item in summaries]
-        image_mean_areas = [float(item["mean_area"]) for item in summaries if int(item.get("particle_count", 0)) > 0]
-        image_mean_sizes = [float(item["mean_size"]) for item in summaries if int(item.get("particle_count", 0)) > 0]
+        image_mean_areas = [float(item["mean_area"]) for item in physical_summaries if int(item.get("particle_count", 0)) > 0]
+        image_mean_sizes = [float(item["mean_size"]) for item in physical_summaries if int(item.get("particle_count", 0)) > 0]
         image_mean_channel_widths_x = [
-            float(item["mean_channel_width_x"]) for item in summaries if int(item.get("channel_width_count_x", 0)) > 0
+            float(item["mean_channel_width_x"]) for item in physical_summaries if int(item.get("channel_width_count_x", 0)) > 0
         ]
         image_mean_channel_widths_y = [
-            float(item["mean_channel_width_y"]) for item in summaries if int(item.get("channel_width_count_y", 0)) > 0
+            float(item["mean_channel_width_y"]) for item in physical_summaries if int(item.get("channel_width_count_y", 0)) > 0
         ]
         image_names = [str(item.get("image_name", f"image_{index + 1}")) for index, item in enumerate(summaries)]
-        area_unit = next((str(item.get("area_unit")) for item in summaries if item.get("area_unit")), "px^2")
-        size_unit = next((str(item.get("size_unit")) for item in summaries if item.get("size_unit")), "px")
-        diameter_unit = next((str(item.get("diameter_unit")) for item in summaries if item.get("diameter_unit")), "px")
-        channel_width_unit = next((str(item.get("channel_width_unit")) for item in summaries if item.get("channel_width_unit")), "px")
+        physical_image_names = [
+            str(item.get("image_name", f"image_{index + 1}")) for index, item in enumerate(physical_summaries)
+        ]
+        area_unit = next((str(item.get("area_unit")) for item in physical_summaries if item.get("area_unit")), "px^2")
+        size_unit = next((str(item.get("size_unit")) for item in physical_summaries if item.get("size_unit")), "px")
+        diameter_unit = next((str(item.get("diameter_unit")) for item in physical_summaries if item.get("diameter_unit")), "px")
+        channel_width_unit = next((str(item.get("channel_width_unit")) for item in physical_summaries if item.get("channel_width_unit")), "px")
         total_pixels = sum(int(item.get("total_pixels", 0)) for item in summaries)
         foreground_pixels = sum(int(item.get("foreground_pixels", 0)) for item in summaries)
         calibration_hint = next(
@@ -531,6 +669,10 @@ class PipelineService:
             "particle_count_total": int(sum(particle_counts)),
             "object_count_total": int(sum(object_counts)),
             "filtered_object_count_total": int(sum(filtered_object_counts)),
+            "calibrated_image_count": calibrated_image_count,
+            "physical_stats_image_count": physical_stats_image_count,
+            "physical_stats_scope": physical_stats_scope,
+            "mixed_calibration": mixed_calibration,
             "particle_counts": particle_counts,
             "object_counts": object_counts,
             "image_mean_areas": image_mean_areas,
@@ -601,6 +743,7 @@ class PipelineService:
             "diameter_unit": diameter_unit,
             "channel_width_unit": channel_width_unit,
             "image_names": image_names,
+            "physical_stats_image_names": physical_image_names,
             "foreground_pixels": int(foreground_pixels),
             "total_pixels": int(total_pixels),
             "calibration_hint": calibration_hint,
@@ -683,28 +826,14 @@ class PipelineService:
         run: RunTask,
         metrics: list[MetricRecord],
         batch_summaries: dict[str, dict[str, Any]],
-        dl_failed: str | None,
         execution: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         image_map: dict[int, dict[str, Any]] = {}
-        compare_rows: list[dict[str, Any]] = []
         for metric in metrics:
             if metric.image_id is None:
                 continue
             image_row = image_map.setdefault(metric.image_id, {"image_id": metric.image_id, "modes": {}})
             image_row["modes"][metric.mode] = {"summary": metric.summary, "artifacts": metric.artifacts}
-        if run.segmentation_mode == "compare":
-            for row in image_map.values():
-                trad = row["modes"].get("traditional", {}).get("summary")
-                dl = row["modes"].get("dl", {}).get("summary")
-                if trad and dl:
-                    compare_rows.append(
-                        {
-                            "image_id": row["image_id"],
-                            "vf_gap": round(float(dl["volume_fraction"]) - float(trad["volume_fraction"]), 6),
-                            "particle_gap": int(dl["particle_count"]) - int(trad["particle_count"]),
-                        }
-                    )
         return {
             "batch": batch_summaries,
             "execution": execution,
@@ -717,7 +846,6 @@ class PipelineService:
                 (summary.get("calibration_probe") for summary in batch_summaries.values() if summary.get("calibration_probe")),
                 None,
             ),
-            "compare": {"rows": compare_rows, "dl_error": dl_failed} if run.segmentation_mode == "compare" else None,
         }
 
     def _build_charts(self, run_id: int, batch_summaries: dict[str, dict[str, Any]], chart_paths: dict[str, str]) -> dict[str, Any]:

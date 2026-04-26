@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { BarChart, BoxplotChart } from 'echarts/charts'
-import { DatasetComponent, GridComponent, TooltipComponent, TransformComponent } from 'echarts/components'
+import { BarChart, BoxplotChart, LineChart, ScatterChart } from 'echarts/charts'
+import { DatasetComponent, GraphicComponent, GridComponent, MarkAreaComponent, TooltipComponent, TransformComponent } from 'echarts/components'
 import { use, init, type EChartsType, type EChartsCoreOption } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 
@@ -10,7 +10,19 @@ const props = defineProps<{
   height?: string
 }>()
 
-use([BarChart, BoxplotChart, GridComponent, TooltipComponent, DatasetComponent, TransformComponent, CanvasRenderer])
+use([
+  BarChart,
+  BoxplotChart,
+  LineChart,
+  ScatterChart,
+  GridComponent,
+  TooltipComponent,
+  DatasetComponent,
+  TransformComponent,
+  GraphicComponent,
+  MarkAreaComponent,
+  CanvasRenderer,
+])
 
 const chartRef = ref<HTMLDivElement | null>(null)
 let chart: EChartsType | null = null
@@ -87,6 +99,24 @@ const handleVisibilityChange = () => {
   })
 }
 
+const exportDataUrl = (type: 'png' | 'jpeg' = 'png') => {
+  ensureChart()
+  if (chart) {
+    chart.resize()
+  }
+  if (!chart) return ''
+  return chart.getDataURL({
+    type,
+    pixelRatio: 2,
+    backgroundColor: '#ffffff',
+  })
+}
+
+defineExpose({
+  getChartInstance: () => chart,
+  exportDataUrl,
+})
+
 onMounted(() => {
   void nextTick().then(() => {
     ensureChart()
@@ -124,10 +154,18 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="chartRef" class="chart-canvas" :style="{ width: '100%', height: height ?? '220px' }"></div>
+  <div class="chart-canvas-shell">
+    <div ref="chartRef" class="chart-canvas" :style="{ width: '100%', height: height ?? '220px' }"></div>
+  </div>
 </template>
 
 <style scoped>
+.chart-canvas-shell {
+  width: 100%;
+  min-width: 0;
+  border-radius: 14px;
+}
+
 .chart-canvas {
   display: block;
   min-width: 0;

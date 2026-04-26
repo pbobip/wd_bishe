@@ -2,13 +2,10 @@
 import { computed } from 'vue'
 
 import type { RunRecord } from '../types'
-import { getCalibrationHint, getCalibrationState } from '../utils/calibration'
 
 const props = defineProps<{
   run: RunRecord | null | undefined
 }>()
-
-const state = computed(() => getCalibrationState(props.run))
 
 const snapshot = computed(() => {
   const summary = (props.run?.summary ?? {}) as Record<string, unknown>
@@ -54,44 +51,20 @@ const snapshotRows = computed(() => {
   ]
 })
 
-const hint = computed(() => getCalibrationHint(props.run))
-
-const summaryLine = computed(() => {
-  if (!snapshot.value) return ''
-  const segments = [
-    snapshot.value.ocr_scale_bar_um ? `比例尺 ${snapshot.value.ocr_scale_bar_um} μm` : null,
-    snapshot.value.ocr_fov_um ? `FoV ${snapshot.value.ocr_fov_um} μm` : null,
-    snapshot.value.ocr_magnification_text ? `Mag ${snapshot.value.ocr_magnification_text}` : null,
-    snapshot.value.ocr_wd_mm ? `WD ${snapshot.value.ocr_wd_mm} mm` : null,
-  ].filter((item): item is string => Boolean(item))
-  return segments.length ? `OCR 标定结果：${segments.join(' · ')}` : ''
-})
 </script>
 
 <template>
-  <section class="glass-card calibration-banner" :class="{ 'is-uncalibrated': !state.calibrated }">
-    <div class="banner-header">
-      <div>
-        <span class="status-chip">{{ state.label }}</span>
-        <h3 class="section-title">标定状态</h3>
-      </div>
-      <p class="banner-detail">{{ state.detail }}</p>
-    </div>
-
-    <div v-if="summaryLine" class="banner-summary">
-      <strong>OCR 标定信息</strong>
-      <span>{{ summaryLine }}</span>
-    </div>
-
-    <p v-if="hint" class="banner-hint">{{ hint }}</p>
-
-    <details v-if="snapshotRows.length" class="banner-details">
+  <section class="glass-card calibration-banner">
+    <details class="banner-details" :open="!snapshotRows.length">
       <summary>查看采集与 OCR 详情</summary>
-      <div class="banner-grid">
-        <div v-for="row in snapshotRows" :key="row.label" class="banner-metric">
-          <span>{{ row.label }}</span>
-          <strong>{{ row.value }}</strong>
+      <div class="banner-body">
+        <div v-if="snapshotRows.length" class="banner-grid">
+          <div v-for="row in snapshotRows" :key="row.label" class="banner-metric">
+            <span>{{ row.label }}</span>
+            <strong>{{ row.value }}</strong>
+          </div>
         </div>
+        <p v-else class="banner-empty-text">当前结果未解析到采集或 OCR 信息。</p>
       </div>
     </details>
   </section>
@@ -99,68 +72,81 @@ const summaryLine = computed(() => {
 
 <style scoped>
 .calibration-banner {
-  padding: 16px 18px;
+  padding: 18px;
   border: 1px solid rgba(31, 40, 48, 0.08);
-  background: linear-gradient(135deg, rgba(23, 96, 135, 0.08), rgba(184, 90, 43, 0.08));
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.calibration-banner.is-uncalibrated {
-  border-color: rgba(184, 90, 43, 0.2);
-}
-
-.banner-header {
-  display: grid;
-  gap: 8px;
-  align-items: start;
-}
-
-.banner-detail,
-.banner-hint {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.banner-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 12px;
-  align-items: center;
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.68);
-  border: 1px solid rgba(31, 40, 48, 0.06);
-}
-
-.banner-summary strong {
-  font-size: 14px;
-}
-
-.banner-summary span {
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.banner-hint {
-  padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: 22px;
   background: rgba(255, 255, 255, 0.58);
+  display: grid;
+  gap: 0;
+  box-shadow: 0 10px 24px rgba(44, 32, 20, 0.05);
+}
+
+.banner-details {
+  padding: 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(247, 242, 235, 0.78));
+  border: 1px solid rgba(31, 40, 48, 0.06);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.banner-details[open] {
+  border-color: rgba(23, 96, 135, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.banner-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  font-weight: 700;
+  color: rgba(31, 40, 48, 0.84);
+  list-style: none;
+  line-height: 1.4;
+}
+
+.banner-details summary::after {
+  content: '+';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(23, 96, 135, 0.08);
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 500;
+  flex: 0 0 auto;
+}
+
+.banner-details[open] summary::after {
+  content: '-';
+}
+
+.banner-body {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid rgba(31, 40, 48, 0.06);
+}
+
+.banner-details summary::-webkit-details-marker {
+  display: none;
 }
 
 .banner-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 10px;
-  margin-top: 12px;
 }
 
 .banner-metric {
   padding: 12px 14px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.62);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(31, 40, 48, 0.06);
 }
 
@@ -175,21 +161,10 @@ const summaryLine = computed(() => {
   font-size: 16px;
 }
 
-.banner-details {
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.56);
-}
-
-.banner-details summary {
-  cursor: pointer;
-  font-weight: 600;
+.banner-empty-text {
+  margin: 0;
   color: var(--muted);
-  list-style: none;
-}
-
-.banner-details summary::-webkit-details-marker {
-  display: none;
+  line-height: 1.6;
 }
 
 @media (max-width: 900px) {

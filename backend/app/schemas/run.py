@@ -6,11 +6,18 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class ImageCalibrationConfig(BaseModel):
+    relative_path: str
+    original_name: str | None = None
+    um_per_px: float | None = None
+
+
 class InputConfig(BaseModel):
     result_dir_name: str = "default"
     um_per_px: float | None = None
     auto_crop_sem_region: bool = True
     save_sem_footer: bool = True
+    image_calibrations: list[ImageCalibrationConfig] = Field(default_factory=list)
 
 
 class PreprocessBackgroundConfig(BaseModel):
@@ -99,6 +106,7 @@ class PreprocessConfig(BaseModel):
 
 class TraditionalSegConfig(BaseModel):
     method: Literal["threshold", "adaptive", "edge", "clustering"] = "threshold"
+    foreground_target: Literal["dark", "bright"] = "dark"
     threshold_mode: Literal["otsu", "global", "fixed"] = "otsu"
     global_threshold: int = 120
     fixed_threshold: int = 120
@@ -112,10 +120,14 @@ class TraditionalSegConfig(BaseModel):
     edge_dilate_iterations: int = 1
     kmeans_clusters: int = 2
     kmeans_attempts: int = 5
-    cluster_target: Literal["bright", "dark", "largest"] = "bright"
-    fill_holes: bool = True
+    cluster_target: Literal["bright", "dark", "largest"] = "dark"
+    fill_holes: bool = False
     watershed: bool = False
-    boundary_smoothing: bool = True
+    watershed_separation: int = 35
+    watershed_bg_iterations: int = 1
+    watershed_min_marker_area: int = 12
+    boundary_smoothing: bool = False
+    boundary_smoothing_method: Literal["morphology", "mean", "gaussian", "median"] = "morphology"
     boundary_smoothing_kernel: int = 3
     min_area: int = 30
     max_area: int | None = None
@@ -123,33 +135,28 @@ class TraditionalSegConfig(BaseModel):
     min_circularity: float = 0.0
     min_roundness: float = 0.0
     max_aspect_ratio: float | None = None
-    remove_border: bool = True
+    remove_border: bool = False
     open_kernel: int = 3
     close_kernel: int = 3
 
 
 class DlModelConfig(BaseModel):
-    model_slot: Literal["sam_lora", "resnext50", "matsam", "custom"] = "matsam"
+    model_slot: Literal["mbu_netpp", "sam_lora", "resnext50", "matsam", "custom"] = "mbu_netpp"
     runner_id: int | None = None
     weight_path: str | None = None
-    input_size: int = 1024
-    threshold: float = 0.3
+    input_size: int = 256
     device: Literal["auto", "cuda", "cpu"] = "auto"
     extra_params: dict[str, Any] = Field(default_factory=dict)
 
 
-class CompareConfig(BaseModel):
-    enabled: bool = False
-
-
 class PostprocessSmoothingConfig(BaseModel):
-    enabled: bool = True
+    enabled: bool = False
     method: Literal["mean", "gaussian", "median"] = "gaussian"
     kernel: int = 3
 
 
 class PostprocessShapeFilterConfig(BaseModel):
-    enabled: bool = True
+    enabled: bool = False
     min_area: int = 30
     max_area: int | None = None
     min_solidity: float = 0.0
@@ -158,12 +165,27 @@ class PostprocessShapeFilterConfig(BaseModel):
     max_aspect_ratio: float | None = None
 
 
+class PostprocessMorphologyConfig(BaseModel):
+    opening_enabled: bool = False
+    opening_kernel: int = 3
+    closing_enabled: bool = False
+    closing_kernel: int = 3
+
+
+class PostprocessWatershedConfig(BaseModel):
+    separation: int = Field(default=35, ge=5, le=85)
+    background_iterations: int = Field(default=1, ge=1, le=5)
+    min_marker_area: int = Field(default=12, ge=0, le=500)
+
+
 class PostprocessConfig(BaseModel):
-    fill_holes: bool = True
+    fill_holes: bool = False
     watershed: bool = False
+    watershed_params: PostprocessWatershedConfig = Field(default_factory=PostprocessWatershedConfig)
     smoothing: PostprocessSmoothingConfig = Field(default_factory=PostprocessSmoothingConfig)
     shape_filter: PostprocessShapeFilterConfig = Field(default_factory=PostprocessShapeFilterConfig)
-    remove_border: bool = True
+    morphology: PostprocessMorphologyConfig = Field(default_factory=PostprocessMorphologyConfig)
+    remove_border: bool = False
 
 
 class MeasurementConfig(BaseModel):
@@ -193,15 +215,13 @@ class ExportConfig(BaseModel):
 
 
 class RunCreate(BaseModel):
-    project_id: int
     name: str
     input_mode: Literal["single", "batch"]
-    segmentation_mode: Literal["traditional", "dl", "compare"]
+    segmentation_mode: Literal["traditional", "dl"]
     input_config: InputConfig = Field(default_factory=InputConfig)
     preprocess: PreprocessConfig = Field(default_factory=PreprocessConfig)
     traditional_seg: TraditionalSegConfig = Field(default_factory=TraditionalSegConfig)
     dl_model: DlModelConfig = Field(default_factory=DlModelConfig)
-    compare: CompareConfig = Field(default_factory=CompareConfig)
     postprocess: PostprocessConfig = Field(default_factory=PostprocessConfig)
     stats: StatsConfig = Field(default_factory=StatsConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
@@ -232,7 +252,6 @@ class RunRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    project_id: int
     name: str
     input_mode: str
     segmentation_mode: str
@@ -254,6 +273,38 @@ class RunResultResponse(BaseModel):
     images: list[dict[str, Any]]
     steps: list[RunStepRead]
     exports: list[dict[str, Any]]
+
+
+class PostprocessPreviewCreate(BaseModel):
+    mode: Literal["traditional", "dl"]
+    postprocess: PostprocessConfig = Field(default_factory=PostprocessConfig)
+    selected_image_id: int | None = None
+
+
+class PostprocessPreviewRead(BaseModel):
+    preview_token: str
+    mode: str
+    image_id: int
+    image_name: str
+    before_mask_url: str | None = None
+    after_mask_url: str | None = None
+    before_overlay_url: str | None = None
+    after_overlay_url: str | None = None
+    before_object_overlay_url: str | None = None
+    after_object_overlay_url: str | None = None
+    before_summary: dict[str, Any]
+    after_summary: dict[str, Any]
+    image_count: int
+
+
+class PostprocessConfirmCreate(BaseModel):
+    preview_token: str
+
+
+class PostprocessConfirmRead(BaseModel):
+    run: RunRead
+    mode: str
+    image_count: int
 
 
 class ModelRunnerCreate(BaseModel):

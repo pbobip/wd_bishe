@@ -2,6 +2,18 @@
 
 本目录主要按“方法名 -> 统一 10 张展示样例”的方式组织，便于在 GitHub 中直接横向比较不同模型的预测效果。
 
+## 2026-04-26 补充说明
+
+论文当前主结果不再以本目录早期 `sam_lora`、`resnext`、`matsam` 等探索路线作为最终模型结论。最终论文主模型采用 `opt_real53_boundary_sampling`，完整训练结果和权重体积较大，保留在本地归档，不直接纳入 git。
+
+当前纳入仓库、可直接用于论文的轻量图表位于：
+
+- `results/paper_figures/holdout_traditional_vs_mbu_metrics_bar.png`
+- `results/paper_figures/holdout_traditional_vs_mbu_typical_comparison.png`
+- `results/paper_figures/holdout_typical_samples_selection.csv`
+
+服务器下载的完整结果目录、`.tar.gz` 大包和模型权重不纳入 git，避免仓库体积失控。
+
 ## 展示样例
 
 统一抽取的 10 张样例如下：

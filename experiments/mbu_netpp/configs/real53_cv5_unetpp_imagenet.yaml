@@ -1,0 +1,88 @@
+experiment:
+  name: real53_cv5_unetpp_imagenet
+  output_root: experiments/mbu_netpp/outputs/real53_cv5_unetpp_imagenet
+  seed: 42
+  save_best_by: dice
+
+data:
+  images_dir: C:\Users\pyd111\Desktop\analysis_same_teacher_nocap_095\1
+  annotations_dir: C:\Users\pyd111\Desktop\analysis_same_teacher_nocap_095\1
+  prepared_root: experiments/mbu_netpp/workdir/prepared_real53_cv5
+  positive_labels:
+    - gamma_prime
+  num_folds: 5
+  fold_seed: 42
+  fold_manifest_name: folds_5_seed42.json
+  edge_kernel: 3
+  auto_prepare: false
+  force_prepare: false
+  auto_crop_sem_region: true
+  crop_detection_ratio: 0.75
+  patch_size: 256
+  overlap: 0.25
+  samples_per_epoch: 192
+  normalization: minmax
+  preprocess:
+    enabled: true
+    background:
+      method: none
+      radius: 25
+    denoise:
+      method: none
+      gaussian_kernel: 3
+      median_kernel: 3
+    enhance:
+      method: clahe
+      clahe_clip_limit: 2.0
+      clahe_tile_size: 8
+    extras:
+      unsharp: false
+      unsharp_radius: 3
+      unsharp_amount: 1.0
+  augmentation:
+    horizontal_flip_p: 0.5
+    vertical_flip_p: 0.5
+    rotate90_p: 0.75
+    scale_p: 0.3
+    scale_limit: 0.1
+    brightness_contrast_p: 0.25
+    brightness_limit: 0.08
+    contrast_limit: 0.08
+    gaussian_noise_p: 0.2
+    noise_std_limit: 10.0
+    min_foreground_ratio: 0.01
+    min_edge_ratio: 0.002
+    crop_attempts: 12
+
+model:
+  name: unetpp
+  encoder_name: se_resnext50_32x4d
+  encoder_weights_mode: imagenet
+  micronet_checkpoint: ""
+  in_channels: 1
+  classes: 1
+  decoder_channels: [256, 128, 64, 32, 16]
+  use_edge_head: false
+  use_deep_supervision: false
+
+training:
+  device: cuda
+  batch_size: 6
+  num_workers: 8
+  epochs: 80
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  scheduler: cosine
+  amp: true
+  threshold: 0.5
+  boundary_tolerance: 2
+
+loss:
+  use_edge_loss: false
+  use_vf_loss: false
+  edge_weight: 0.3
+  deep_weight: 0.2
+  vf_weight: 0.1
+
+inference:
+  overlap: 0.25

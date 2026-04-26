@@ -102,6 +102,9 @@ class StatisticsService:
                 "weight": float(lantueoul_weight),
                 "filtered": filtered,
                 "filter_reason": reason_text,
+                "length_unit": unit,
+                "area_unit": f"{unit}^2",
+                "um_per_px": float(scale) if scale else None,
             }
             objects.append(object_record)
             if not filtered:
@@ -136,7 +139,7 @@ class StatisticsService:
 
         scale = um_per_px if um_per_px and um_per_px > 0 else None
         unit = "um" if scale else "px"
-        if objects is None:
+        if objects is None or not self._objects_match_scale(objects, scale):
             object_stats = self.build_object_stats(binary, um_per_px=scale, config=config)
             objects = object_stats["objects"]
 
@@ -145,8 +148,11 @@ class StatisticsService:
         filtered_objects = [item for item in all_objects if bool(item.get("filtered"))]
 
         areas_units = [float(item["area_value"]) for item in kept_objects]
-        sizes_units = [float(item["size_value"]) for item in kept_objects]
-        diameters_units = [float(item["equiv_diameter"]) for item in kept_objects if "equiv_diameter" in item]
+        diameters_units = [
+            float(item["equiv_diameter"]) if "equiv_diameter" in item else float(item["size_value"])
+            for item in kept_objects
+        ]
+        sizes_units = diameters_units
         perimeters_units = [float(item["perimeter_value"]) for item in kept_objects]
         majors_units = [float(item["major_value"]) for item in kept_objects]
         minors_units = [float(item["minor_value"]) for item in kept_objects]
@@ -157,11 +163,16 @@ class StatisticsService:
         roundness_values = [float(item["roundness"]) for item in kept_objects]
         solidity_values = [float(item["solidity"]) for item in kept_objects]
 
-        # ------ 通道宽度：Distance Transform + 骨架法（旋转不变）------
-        channel_widths = self._channel_widths_distance_transform(binary, scale=scale)
-        # 向后兼容：x/y 方向都填入同一份旋转不变数据
-        channel_widths_x = list(channel_widths)
-        channel_widths_y = list(channel_widths)
+        # 空前景或全前景时不存在稳定通道，直接跳过，避免预览在极端阈值下卡死。
+        if fg_pixels == 0 or fg_pixels == valid_pixels:
+            channel_widths_x = []
+            channel_widths_y = []
+        else:
+            # ------ 通道宽度：水平 / 垂直截线法 ------
+            # W_x: 逐行统计被前景从左右夹住的背景段；W_y: 逐列统计被前景从上下夹住的背景段。
+            channel_widths_x = self._collect_channel_widths(binary, axis="x", scale=scale)
+            channel_widths_y = self._collect_channel_widths(binary, axis="y", scale=scale)
+        channel_widths = list(channel_widths_x) + list(channel_widths_y)
 
         def safe_stat(values: list[float], fn, default: float = 0.0) -> float:
             clean = [float(value) for value in values if value is not None and np.isfinite(value)]
@@ -237,13 +248,13 @@ class StatisticsService:
             "mean_solidity": weighted_mean(solidity_values, weights),
             "median_solidity": safe_stat(solidity_values, np.median),
             "std_solidity": safe_stat(solidity_values, np.std),
-            # --- 通道宽度（Distance Transform 旋转不变）---
-            "mean_channel_width_x": safe_stat(channel_widths, np.mean),
-            "median_channel_width_x": safe_stat(channel_widths, np.median),
-            "std_channel_width_x": safe_stat(channel_widths, np.std),
-            "mean_channel_width_y": safe_stat(channel_widths, np.mean),
-            "median_channel_width_y": safe_stat(channel_widths, np.median),
-            "std_channel_width_y": safe_stat(channel_widths, np.std),
+            # --- 通道宽度（水平 / 垂直截线）---
+            "mean_channel_width_x": safe_stat(channel_widths_x, np.mean),
+            "median_channel_width_x": safe_stat(channel_widths_x, np.median),
+            "std_channel_width_x": safe_stat(channel_widths_x, np.std),
+            "mean_channel_width_y": safe_stat(channel_widths_y, np.mean),
+            "median_channel_width_y": safe_stat(channel_widths_y, np.median),
+            "std_channel_width_y": safe_stat(channel_widths_y, np.std),
             "channel_widths": channel_widths,
             "channel_widths_x": channel_widths_x,
             "channel_widths_y": channel_widths_y,
@@ -266,6 +277,31 @@ class StatisticsService:
             "particles": kept_objects,
             "filtered_objects": filtered_objects,
         }
+
+    def _objects_match_scale(self, objects: list[dict[str, Any]], scale: float | None) -> bool:
+        if not objects:
+            return True
+
+        expected_unit = "um" if scale else "px"
+        for item in objects:
+            length_unit = item.get("length_unit")
+            if length_unit is None:
+                # Legacy object records were generated in pixels because they
+                # carried no unit metadata.
+                if scale:
+                    return False
+                continue
+            if str(length_unit) != expected_unit:
+                return False
+
+            item_scale = item.get("um_per_px")
+            if scale:
+                if item_scale is None or not math.isclose(float(item_scale), float(scale), rel_tol=1e-9, abs_tol=1e-12):
+                    return False
+            elif item_scale not in (None, 0, 0.0):
+                return False
+
+        return True
 
     def _measure_object(
         self,
@@ -293,14 +329,14 @@ class StatisticsService:
             minor_value = minor_px * scale
             feret_value = feret_px * scale
             minferet_value = minferet_px * scale
-            size_value = math.sqrt(area_value)
+            size_value = equiv_diameter_value
         else:
             perimeter_value = perimeter_px
             major_value = major_px
             minor_value = minor_px
             feret_value = feret_px
             minferet_value = minferet_px
-            size_value = math.sqrt(area_value)
+            size_value = equiv_diameter_value
 
         return {
             "area_value": float(area_value),
@@ -495,13 +531,29 @@ class StatisticsService:
             return [float(w * scale) for w in widths_px]
         return [float(w) for w in widths_px]
 
-    # ------ 保留旧接口以防外部直接调用 ------
     def _collect_channel_widths(self, binary: np.ndarray, axis: str, scale: float | None = None) -> list[float]:
-        """[已弃用] 旧的一维截线法，内部重定向至 Distance Transform 方法。"""
-        return self._channel_widths_distance_transform(binary, scale=scale)
+        """按水平/垂直截线统计被前景夹住的背景通道宽度。"""
+        if binary.size == 0:
+            return []
+
+        normalized = (binary > 0).astype(np.uint8)
+        if axis == "x":
+            lines = normalized
+        elif axis == "y":
+            lines = normalized.T
+        else:
+            raise ValueError(f"未知通道宽度方向: {axis}")
+
+        widths_px: list[int] = []
+        for line in lines:
+            widths_px.extend(self._interior_zero_runs(line))
+
+        if scale and scale > 0:
+            return [float(width * scale) for width in widths_px]
+        return [float(width) for width in widths_px]
 
     def _interior_zero_runs(self, line: np.ndarray) -> list[int]:
-        """[已弃用] 保留以兼容可能的外部调用。"""
+        """返回一条截线上被前景从两侧夹住的背景段长度。"""
         values = [int(item) for item in np.asarray(line).ravel()]
         if len(values) < 3:
             return []

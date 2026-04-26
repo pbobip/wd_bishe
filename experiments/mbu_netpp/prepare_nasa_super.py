@@ -13,6 +13,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--subsets", nargs="+", default=["Super1", "Super2", "Super3", "Super4"], help="需要处理的 Super 子集")
     parser.add_argument("--splits", nargs="+", default=["train", "val", "test"], help="需要处理的 split")
     parser.add_argument("--include-different-test", action="store_true", help="包含 different_test 及其标注")
+    parser.add_argument("--num-folds", type=int, default=3, help="生成训练清单时使用的 fold 数量")
+    parser.add_argument("--seed", type=int, default=42, help="生成训练清单时使用的随机种子")
     parser.add_argument("--auto-crop", action="store_true", help="对 NASA 图像也尝试自动裁掉底栏")
     parser.add_argument("--crop-detection-ratio", type=float, default=0.75, help="底栏检测起始比例")
     parser.add_argument("--edge-kernels", nargs="+", type=int, default=[3, 5], help="边界带核大小")
@@ -43,6 +45,8 @@ def main() -> None:
         crop_detection_ratio=float(args.crop_detection_ratio),
         edge_kernels=tuple(args.edge_kernels),
         foreground_colors=foreground_colors,
+        num_folds=int(args.num_folds),
+        seed=int(args.seed),
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

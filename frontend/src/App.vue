@@ -1,71 +1,59 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+
+import { useTaskWorkflow } from './composables/useTaskWorkflow'
 
 const route = useRoute()
 const router = useRouter()
-const SIDEBAR_STORAGE_KEY = 'wd_bishe_sidebar_collapsed'
+const workflow = useTaskWorkflow()
 
 const navItems = [
-  {
-    key: 'projects',
-    label: '项目创建',
-    to: '/projects',
-    badge: '01',
-  },
   {
     key: 'task-create',
     label: '任务创建',
     to: '/tasks/create',
-    badge: '02',
+    badge: '01',
   },
   {
     key: 'postprocess',
-    label: '后处理',
+    label: '结果与后处理',
     to: '/postprocess',
-    badge: '03',
+    badge: '02',
   },
   {
-    key: 'results',
-    label: '结果展示',
-    to: '/results',
-    badge: '04',
+    key: 'statistics',
+    label: '统计分析',
+    to: '/statistics',
+    badge: '03',
   },
   {
     key: 'history',
     label: '历史记录',
     to: '/history',
-    badge: '05',
+    badge: '04',
   },
 ]
 
-const currentSectionKey = computed(() => String(route.meta.sectionKey ?? 'projects'))
+const currentSectionKey = computed(() => String(route.meta.sectionKey ?? 'task-create'))
 const currentSection = computed(
   () => navItems.find((item) => item.key === currentSectionKey.value) ?? navItems[0],
 )
-const isSidebarCollapsed = ref(false)
+const routedRunId = computed(() => {
+  const raw = route.params.id
+  if (typeof raw === 'string' && raw.trim()) return raw
+  return null
+})
 const isMobileViewport = ref(false)
 const isMobileSidebarOpen = ref(false)
-const effectiveSidebarCollapsed = computed(() => isSidebarCollapsed.value && !isMobileViewport.value)
-const sidebarToggleLabel = computed(() => {
-  if (isMobileViewport.value) {
-    return isMobileSidebarOpen.value ? '关闭导航' : '展开侧栏'
-  }
-  return effectiveSidebarCollapsed.value ? '展开侧栏' : '收起侧栏'
-})
-const sidebarToggleSymbol = computed(() => {
-  if (isMobileViewport.value) {
-    return isMobileSidebarOpen.value ? '‹' : '›'
-  }
-  return effectiveSidebarCollapsed.value ? '›' : '‹'
-})
+const sidebarToggleLabel = computed(() => (isMobileSidebarOpen.value ? '关闭导航' : '展开导航'))
+const sidebarToggleSymbol = computed(() => (isMobileSidebarOpen.value ? '‹' : '›'))
+
+let navigationInProgress = false
 
 const toggleSidebar = () => {
-  if (isMobileViewport.value) {
-    isMobileSidebarOpen.value = !isMobileSidebarOpen.value
-    return
-  }
-  isSidebarCollapsed.value = !isSidebarCollapsed.value
+  isMobileSidebarOpen.value = !isMobileSidebarOpen.value
 }
 
 const syncViewport = () => {
@@ -75,22 +63,64 @@ const syncViewport = () => {
   }
 }
 
-const navigateTo = (to: string) => {
-  router.push(to)
+const closeMobileSidebar = () => {
   if (isMobileViewport.value) {
     isMobileSidebarOpen.value = false
   }
 }
 
-onMounted(() => {
+const navigateTo = async (targetKey: string) => {
+  if (navigationInProgress) return
+  navigationInProgress = true
   try {
-    const cached = window.localStorage.getItem(SIDEBAR_STORAGE_KEY)
-    if (cached === '1') {
-      isSidebarCollapsed.value = true
+    if (targetKey === 'task-create') {
+      await router.push('/tasks/create')
+      closeMobileSidebar()
+      return
     }
-  } catch {
-    // ignore local storage failures
+
+    if (targetKey === 'postprocess') {
+      if (routedRunId.value) {
+        await router.push(`/runs/${routedRunId.value}`)
+        closeMobileSidebar()
+        return
+      }
+      const activeId = workflow.activeRunId.value
+      if (!activeId) {
+        ElMessage.warning('请先在任务创建页开始处理，再进入结果展示与后处理。')
+        return
+      }
+      await router.push(`/runs/${activeId}`)
+      closeMobileSidebar()
+      return
+    }
+
+    if (targetKey === 'statistics') {
+      if (routedRunId.value) {
+        await router.push(`/runs/${routedRunId.value}/statistics`)
+        closeMobileSidebar()
+        return
+      }
+      const activeId = workflow.activeRunId.value
+      if (!activeId) {
+        ElMessage.warning('当前还没有可进入统计页的任务。')
+        return
+      }
+      await router.push(`/runs/${activeId}/statistics`)
+      closeMobileSidebar()
+      return
+    }
+
+    if (targetKey === 'history') {
+      await router.push('/history')
+      closeMobileSidebar()
+    }
+  } finally {
+    navigationInProgress = false
   }
+}
+
+onMounted(() => {
   syncViewport()
   window.addEventListener('resize', syncViewport)
 })
@@ -98,24 +128,27 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', syncViewport)
 })
-
-watch(isSidebarCollapsed, (value) => {
-  try {
-    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, value ? '1' : '0')
-  } catch {
-    // ignore local storage failures
-  }
-})
 </script>
 
 <template>
-  <div
-    class="app-shell"
-    :class="{
-      'is-sidebar-collapsed': effectiveSidebarCollapsed,
-      'is-mobile-sidebar-open': isMobileSidebarOpen,
-    }"
-  >
+  <div class="app-shell" :class="{ 'is-mobile-sidebar-open': isMobileSidebarOpen }">
+    <header v-if="!isMobileViewport" class="desktop-nav glass-card">
+      <nav class="desktop-nav-grid" aria-label="主流程导航">
+        <button
+          v-for="item in navItems"
+          :key="item.key"
+          type="button"
+          class="desktop-nav-item"
+          :class="{ 'is-active': currentSectionKey === item.key }"
+          :aria-current="currentSectionKey === item.key ? 'page' : undefined"
+          @click="navigateTo(item.key)"
+        >
+          <span class="desktop-nav-badge">{{ item.badge }}</span>
+          <span class="desktop-nav-label">{{ item.label }}</span>
+        </button>
+      </nav>
+    </header>
+
     <button
       v-if="isMobileViewport && isMobileSidebarOpen"
       type="button"
@@ -124,7 +157,7 @@ watch(isSidebarCollapsed, (value) => {
       @click="isMobileSidebarOpen = false"
     />
 
-    <aside class="app-sidebar" :class="{ 'is-collapsed': effectiveSidebarCollapsed, 'is-mobile-open': isMobileSidebarOpen }">
+    <aside v-if="isMobileViewport" class="app-sidebar" :class="{ 'is-mobile-open': isMobileSidebarOpen }">
       <div class="sidebar-head">
         <div class="sidebar-brand">
           <div class="brand-copy">
@@ -133,10 +166,6 @@ watch(isSidebarCollapsed, (value) => {
               <span>SEM 分割</span>
               <span>统计平台</span>
             </h1>
-            <p>
-              <span>批量导入与双路线分割</span>
-              <span>结果比对和统计导出</span>
-            </p>
           </div>
         </div>
         <button
@@ -159,7 +188,8 @@ watch(isSidebarCollapsed, (value) => {
           :class="{ 'is-active': currentSectionKey === item.key }"
           :title="item.label"
           :aria-label="item.label"
-          @click="navigateTo(item.to)"
+          :aria-current="currentSectionKey === item.key ? 'page' : undefined"
+          @click="navigateTo(item.key)"
         >
           <span class="nav-badge">{{ item.badge }}</span>
           <span class="nav-copy">
@@ -183,91 +213,133 @@ watch(isSidebarCollapsed, (value) => {
 
 <style scoped>
 .app-shell {
-  --sidebar-width: clamp(204px, 13vw, 236px);
+  --shell-padding: 12px;
+  --desktop-nav-offset: 104px;
+  height: 100vh;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 12px;
-  padding: 12px;
+  padding: var(--shell-padding);
   align-items: start;
   width: 100%;
   min-width: 0;
   overflow-x: clip;
+  position: relative;
 }
 
-.app-shell.is-sidebar-collapsed {
-  --sidebar-width: 80px;
+.desktop-nav {
+  position: fixed;
+  top: var(--shell-padding);
+  left: var(--shell-padding);
+  right: var(--shell-padding);
+  z-index: 40;
+  padding: 14px;
+  border-radius: 28px;
+  box-sizing: border-box;
+  contain: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.desktop-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.desktop-nav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 0 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(31, 40, 48, 0.08);
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.desktop-nav-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(23, 96, 135, 0.14);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 20px rgba(44, 32, 20, 0.05);
+}
+
+.desktop-nav-item.is-active {
+  border-color: rgba(23, 96, 135, 0.16);
+  background: linear-gradient(135deg, rgba(184, 90, 43, 0.1), rgba(23, 96, 135, 0.12));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.34);
+}
+
+.desktop-nav-badge {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(23, 96, 135, 0.08);
+  border: 1px solid rgba(23, 96, 135, 0.08);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.desktop-nav-item.is-active .desktop-nav-badge {
+  background: linear-gradient(135deg, #4d9cf6, #176087);
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(23, 96, 135, 0.18);
+}
+
+.desktop-nav-label {
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
 .app-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  height: calc(100vh - 28px);
-  padding: 16px 14px;
-  background: rgba(255, 250, 243, 0.84);
-  border: 1px solid rgba(31, 40, 48, 0.08);
-  border-radius: 28px;
-  box-shadow: 0 14px 34px rgba(44, 32, 20, 0.08);
-  backdrop-filter: blur(8px);
-  position: sticky;
-  top: 14px;
-  max-height: calc(100vh - 28px);
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  box-sizing: border-box;
-  scrollbar-gutter: stable;
-  transition: padding 0.2s ease, box-shadow 0.2s ease;
-  z-index: 20;
-}
-
-.app-sidebar:hover,
-.app-sidebar:focus-within {
-  scrollbar-color: rgba(31, 40, 48, 0.34) transparent;
-}
-
-.app-sidebar::-webkit-scrollbar {
-  width: 10px;
-}
-
-.app-sidebar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.app-sidebar::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 999px;
-}
-
-.app-sidebar:hover::-webkit-scrollbar-thumb,
-.app-sidebar:focus-within::-webkit-scrollbar-thumb {
-  background: rgba(31, 40, 48, 0.28);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-.app-sidebar:hover::-webkit-scrollbar-thumb:hover,
-.app-sidebar:focus-within::-webkit-scrollbar-thumb:hover {
-  background: rgba(31, 40, 48, 0.44);
+  display: none;
 }
 
 .sidebar-head {
   position: relative;
   padding-right: 52px;
-  padding-bottom: 20px;
+  padding-bottom: 22px;
   border-bottom: 1px solid rgba(31, 40, 48, 0.08);
+  transition: padding 0.3s cubic-bezier(0.22, 1, 0.36, 1), min-height 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sidebar-brand {
   display: block;
   min-width: 0;
+  max-height: 200px;
+  overflow: hidden;
+  transform-origin: top left;
+  transition:
+    opacity 0.22s ease,
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    max-height 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .brand-copy {
   position: relative;
   min-width: 0;
-  max-width: 168px;
+  max-width: 100%;
   padding: 2px 8px 0 14px;
 }
 
@@ -287,28 +359,13 @@ watch(isSidebarCollapsed, (value) => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 800;
-  line-height: 1.08;
+  line-height: 1.15;
   letter-spacing: 0.01em;
 }
 
 .sidebar-brand h1 span {
-  display: block;
-  white-space: nowrap;
-}
-
-.sidebar-brand p {
-  margin: 14px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.sidebar-brand p span {
   display: block;
   white-space: nowrap;
 }
@@ -327,7 +384,12 @@ watch(isSidebarCollapsed, (value) => {
   background: rgba(255, 255, 255, 0.78);
   color: var(--muted);
   cursor: pointer;
-  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease, color 0.18s ease;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.2s ease,
+    border-radius 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sidebar-toggle:hover {
@@ -346,25 +408,31 @@ watch(isSidebarCollapsed, (value) => {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
   flex: 1 1 auto;
   min-height: 0;
-  padding-block: 4px 2px;
+  padding-block: 6px 4px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  padding: 14px 14px 14px 12px;
+  padding: 16px 14px 16px 12px;
   border: 1px solid transparent;
-  border-radius: 18px;
+  border-radius: 20px;
   background: transparent;
   color: var(--ink);
   text-align: left;
   cursor: pointer;
-  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.24s ease,
+    padding 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    gap 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .nav-item:hover {
@@ -391,28 +459,42 @@ watch(isSidebarCollapsed, (value) => {
 }
 
 .nav-badge {
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   display: grid;
   place-items: center;
-  border-radius: 14px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(31, 40, 48, 0.08);
   font-size: 12px;
   font-weight: 700;
   color: var(--accent);
+  transition:
+    width 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.24s ease,
+    background 0.2s ease;
 }
 
 .nav-copy {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  max-width: 140px;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    opacity 0.18s ease,
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .nav-copy strong {
   display: block;
-  font-size: 16px;
-  line-height: 1.3;
+  font-size: 18px;
+  line-height: 1.35;
   white-space: normal;
   word-break: keep-all;
   overflow: visible;
@@ -421,17 +503,34 @@ watch(isSidebarCollapsed, (value) => {
 
 .app-workspace {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  padding-top: var(--desktop-nav-offset);
+  overflow: hidden;
   overflow-x: hidden;
 }
 
 .workspace-content {
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   display: grid;
   gap: 16px;
   width: 100%;
+  padding: 8px 14px 14px;
+  border-radius: 0 0 28px 28px;
+  background: rgba(255, 249, 240, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(31, 40, 48, 0.05);
+  overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.workspace-content::-webkit-scrollbar-thumb {
+  border-radius: 999px;
 }
 
 .workspace-topbar {
@@ -442,81 +541,39 @@ watch(isSidebarCollapsed, (value) => {
   display: none;
 }
 
-.app-sidebar.is-collapsed {
-  padding: 12px 10px 16px;
-}
-
-.app-sidebar.is-collapsed .sidebar-head {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 48px;
-  padding: 0 0 14px;
-}
-
-.app-sidebar.is-collapsed .sidebar-brand {
-  display: none;
-}
-
-.app-sidebar.is-collapsed .sidebar-toggle {
-  position: static;
-  margin: 0 auto;
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  border-radius: 16px;
-}
-
-.app-sidebar.is-collapsed .nav-item {
-  justify-content: center;
-  padding: 12px 8px;
-}
-
-.app-sidebar.is-collapsed .nav-copy {
-  display: none;
-}
-
-.app-sidebar.is-collapsed .nav-badge {
-  width: 46px;
-  height: 46px;
-}
-
 @media (max-width: 1280px) {
-  .app-shell {
-    --sidebar-width: 92px;
+  .desktop-nav-label {
+    font-size: 15px;
   }
-
-  .sidebar-head {
-    padding-right: 0;
-  }
-
-  .sidebar-brand {
-    align-items: center;
-  }
-
-  .brand-copy,
-  .nav-copy {
-    display: none;
-  }
-
-  .sidebar-toggle {
-    position: static;
-    margin: 0 auto;
-  }
-
-  .nav-item {
-    justify-content: center;
-    padding: 12px 8px;
-  }
-
 }
 
 @media (max-width: 820px) {
+  .desktop-nav {
+    display: none;
+  }
+
   .app-shell {
-    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .app-workspace {
+    height: auto;
+    padding-top: 0;
+    overflow: visible;
+  }
+
+  .workspace-content {
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
   }
 
   .app-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
     position: fixed;
     top: 14px;
     left: 14px;
@@ -525,21 +582,54 @@ watch(isSidebarCollapsed, (value) => {
     height: auto;
     max-height: none;
     padding: 14px;
+    background: rgba(255, 250, 243, 0.9);
+    border: 1px solid rgba(31, 40, 48, 0.08);
+    border-radius: 28px;
+    box-shadow: 0 14px 34px rgba(44, 32, 20, 0.08);
+    backdrop-filter: blur(8px);
     transform: translateX(calc(-100% - 28px));
     transition: transform 0.22s ease, box-shadow 0.22s ease;
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    z-index: 20;
+  }
+
+  .app-sidebar:hover,
+  .app-sidebar:focus-within {
+    scrollbar-color: rgba(31, 40, 48, 0.34) transparent;
+  }
+
+  .app-sidebar::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .app-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .app-sidebar::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+  }
+
+  .app-sidebar:hover::-webkit-scrollbar-thumb,
+  .app-sidebar:focus-within::-webkit-scrollbar-thumb {
+    background: rgba(31, 40, 48, 0.28);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .app-sidebar:hover::-webkit-scrollbar-thumb:hover,
+  .app-sidebar:focus-within::-webkit-scrollbar-thumb:hover {
+    background: rgba(31, 40, 48, 0.44);
   }
 
   .sidebar-head {
-    padding-right: 52px;
-  }
-
-  .brand-copy,
-  .nav-copy {
     display: block;
-  }
-
-  .brand-copy {
-    max-width: 182px;
+    min-height: 72px;
+    padding-right: 52px;
+    padding-bottom: 24px;
   }
 
   .sidebar-toggle {
@@ -552,6 +642,10 @@ watch(isSidebarCollapsed, (value) => {
     padding: 14px 14px 14px 12px;
   }
 
+  .brand-copy {
+    max-width: 182px;
+  }
+
   .nav-badge {
     width: 40px;
     height: 40px;
@@ -561,20 +655,6 @@ watch(isSidebarCollapsed, (value) => {
   .nav-copy strong {
     font-size: 15px;
     line-height: 1.22;
-  }
-
-  .app-sidebar.is-collapsed .sidebar-head {
-    padding-right: 52px;
-  }
-
-  .app-sidebar.is-collapsed .brand-copy,
-  .app-sidebar.is-collapsed .nav-copy {
-    display: block;
-  }
-
-  .app-sidebar.is-collapsed .nav-item {
-    justify-content: flex-start;
-    padding: 14px 14px 14px 12px;
   }
 
   .app-sidebar.is-mobile-open {
@@ -621,8 +701,7 @@ watch(isSidebarCollapsed, (value) => {
     width: min(300px, calc(100vw - 20px));
   }
 
-  .nav-item,
-  .app-sidebar.is-collapsed .nav-item {
+  .nav-item {
     gap: 10px;
     padding: 13px 12px 13px 10px;
   }

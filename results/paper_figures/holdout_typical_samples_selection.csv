@@ -1,0 +1,4 @@
+﻿stem,category,traditional_method,traditional_dice,mbu_netpp_dice,reason
+13,Hard sample,otsu_clahe,0.868094,0.915985,lowest Dice in MBU-Net++ holdout per-image metrics; difficult texture/boundary sample
+5,Medium sample,otsu_clahe,0.860153,0.963296,middle-range Dice close to final mean; representative ordinary sample
+2333,Easy sample,otsu_clahe,0.929996,0.981643,highest Dice in MBU-Net++ holdout per-image metrics; clean/easy sample

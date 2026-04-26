@@ -9,3 +9,5 @@ PyYAML
 scikit-image
 Pillow
 openpyxl
+pydantic
+matplotlib

@@ -10,7 +10,9 @@ export interface CalibrationState {
 }
 
 export interface CalibrationProbe {
+  preview_url?: string | null
   footer_detected: boolean
+  background_cropped?: boolean
   scale_bar_detected: boolean
   scale_bar_pixels: number | null
   analysis_width_px: number | null

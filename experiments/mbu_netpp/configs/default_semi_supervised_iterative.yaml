@@ -1,0 +1,122 @@
+experiment:
+  name: mbu_netpp_semi_iterative
+  output_root: experiments/mbu_netpp/outputs/unused_for_iterative_entry
+  seed: 42
+  save_best_by: dice
+
+data:
+  # 这里只放“已人工标注”的那一小部分样本对应的原图目录。
+  # 如果 16 张标注图像和未标注图像都在同一目录，也可以直接写总图像目录；
+  # 准备脚本会只读取 annotations_dir 中存在标注的 stem。
+  images_dir: D:/your_dataset/images
+  annotations_dir: D:/your_dataset/annotations_labeled16
+  prepared_root: experiments/mbu_netpp/workdir/prepared_labeled16
+  positive_labels:
+    - gamma_prime
+  num_folds: 3
+  fold_seed: 42
+  fold_manifest_name: folds_3_seed42.json
+  edge_kernel: 3
+  auto_prepare: true
+  force_prepare: false
+  auto_crop_sem_region: true
+  crop_detection_ratio: 0.75
+  patch_size: 256
+  overlap: 0.25
+  samples_per_epoch: 96
+  normalization: minmax
+  preprocess:
+    enabled: true
+    background:
+      method: none
+      radius: 25
+    denoise:
+      method: none
+      gaussian_kernel: 3
+      median_kernel: 3
+    enhance:
+      method: clahe
+      clahe_clip_limit: 2.0
+      clahe_tile_size: 8
+    extras:
+      unsharp: false
+      unsharp_radius: 3
+      unsharp_amount: 1.0
+  augmentation:
+    horizontal_flip_p: 0.5
+    vertical_flip_p: 0.5
+    rotate90_p: 0.75
+    scale_p: 0.3
+    scale_limit: 0.1
+    brightness_contrast_p: 0.25
+    brightness_limit: 0.08
+    contrast_limit: 0.08
+    gaussian_noise_p: 0.2
+    noise_std_limit: 10.0
+    min_foreground_ratio: 0.01
+    min_edge_ratio: 0.002
+    crop_attempts: 12
+
+model:
+  name: mbu_netpp
+  encoder_name: se_resnext50_32x4d
+  encoder_weights_mode: micronet
+  micronet_checkpoint: ""
+  in_channels: 1
+  classes: 1
+  decoder_channels: [256, 128, 64, 32, 16]
+  use_edge_head: true
+  use_deep_supervision: true
+
+training:
+  device: auto
+  batch_size: 4
+  num_workers: 0
+  epochs: 80
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+  scheduler: cosine
+  amp: true
+  threshold: 0.5
+  boundary_tolerance: 2
+
+loss:
+  use_edge_loss: true
+  use_vf_loss: true
+  edge_weight: 0.3
+  deep_weight: 0.2
+  vf_weight: 0.1
+
+inference:
+  overlap: 0.25
+
+semi_supervised:
+  # 半监督工作目录：每个 fold 的模型、伪标签、待标注列表、状态文件都会写到这里。
+  workspace_root: experiments/mbu_netpp/outputs/semi_iterative_demo
+  # 这里放全部原始图像目录。脚本会自动排除已标注与已入池样本。
+  unlabeled_images_dir: D:/your_dataset/images
+  # 如果你已经先训练好一个监督 baseline，可通过模板直接复用。
+  # 留空时，脚本会先用 data.prepared_root 训练初始 teacher。
+  teacher_checkpoint_template: ""
+  # 人工补标后，可把新增标注单独准备成 prepared_root，再追加到这里。
+  reviewed_labeled_roots: []
+  iterations: 3
+  device: auto
+  reserve_query_samples: true
+  keep_query_pending: true
+  stop_if_no_new_pseudo: true
+  pseudo:
+    binary_threshold: 0.5
+    confidence_threshold: 0.88
+    max_items_per_iteration: 12
+    score_name: confidence_score
+    use_tta: true
+  active_learning:
+    top_k: 5
+    score_name: uncertainty_score
+  retrain:
+    epochs: 20
+    learning_rate: 0.00005
+    real_loss_weight: 1.0
+    pseudo_loss_weight: 0.35
+    supervised_repeat: 8
